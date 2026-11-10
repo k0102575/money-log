@@ -136,6 +136,7 @@ export interface Account {
   updated_at: string;
 }
 export interface Observation {
+  before_day_transactions?: number;
   id: string;
   account_id: string;
   metric: Metric;

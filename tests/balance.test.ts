@@ -71,4 +71,21 @@ test("CMA 확인일에 차이를 계산하고 다음 날 거래부터 새 잔액
     balanceHistory("bank", confirmations, rows, "2026-11-12", false).calculated,
     null,
   );
+  const beforeTransfer = [
+    confirmations[0],
+    { ...confirmations[1], before_day_transactions: 1 },
+  ];
+  const sameDay = balanceHistory(
+    "cma",
+    beforeTransfer,
+    rows,
+    "2026-11-10",
+    true,
+  );
+  assert.equal(sameDay.calculated, "7100");
+  assert.equal(sameDay.adjustments[0]?.expected, "11000");
+  assert.equal(
+    balanceHistory("cma", beforeTransfer, rows, "2026-11-11", true).calculated,
+    "10100",
+  );
 });

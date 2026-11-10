@@ -231,10 +231,11 @@ function obsInsert(
   newId: string,
   old?: Observation,
   reason = "",
+  beforeDayTransactions = false,
 ) {
   return db
     .prepare(
-      "INSERT INTO account_observations(id,account_id,metric,amount_krw,as_of_date,source,source_note,precision,rounding_unit,revision_of,correction_reason,recorded_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+      "INSERT INTO account_observations(id,account_id,metric,amount_krw,as_of_date,source,source_note,precision,rounding_unit,revision_of,correction_reason,recorded_at,before_day_transactions) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
     )
     .bind(
       newId,
@@ -249,6 +250,7 @@ function obsInsert(
       old?.id ?? null,
       reason,
       now(),
+      beforeDayTransactions ? 1 : 0,
     );
 }
 export async function saveMoney(db: D1Database, a: Account, form: FormData) {
@@ -345,7 +347,19 @@ export async function saveMoney(db: D1Database, a: Account, form: FormData) {
           .bind(newId, old.id),
       );
     statements.push(
-      obsInsert(db, a.id, metric, amount, date, ev, newId, old, reason),
+      obsInsert(
+        db,
+        a.id,
+        metric,
+        amount,
+        date,
+        ev,
+        newId,
+        old,
+        reason,
+        metric === "cash_balance" &&
+          form.get("before_day_transactions") === "on",
+      ),
     );
   }
   await commit(db, statements);

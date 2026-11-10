@@ -14,6 +14,18 @@ export function testDb() {
       "utf8",
     ),
   );
+  sql.exec(
+    readFileSync(
+      new URL("../migrations/0003_balance_cutoff.sql", import.meta.url),
+      "utf8",
+    ),
+  );
+  sql.exec(
+    readFileSync(
+      new URL("../migrations/0004_recurring_savings.sql", import.meta.url),
+      "utf8",
+    ),
+  );
   const prepare = (text: string) => {
     let args: unknown[] = [];
     const query = {

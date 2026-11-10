@@ -35,17 +35,21 @@ export function balanceHistory(
       (movements.get(row.occurred_on) ?? 0n) + change,
     );
   }
-  const netAfter = (start: string, end: string) => {
+  const netAfter = (start: Observation, end: string, beforeEnd = false) => {
     let net = 0n;
     for (const [date, change] of movements) {
-      if (date > start && date <= end) net += change;
+      const afterStart =
+        date > start.as_of_date ||
+        (date === start.as_of_date && start.before_day_transactions === 1);
+      if (afterStart && (date < end || (date === end && !beforeEnd)))
+        net += change;
     }
     return net;
   };
 
   const base = confirmations.at(-1);
   const calculated = base
-    ? BigInt(base.amount_krw) + netAfter(base.as_of_date, asOf)
+    ? BigInt(base.amount_krw) + netAfter(base, asOf)
     : null;
   const adjustments = reconcile
     ? confirmations
@@ -54,7 +58,11 @@ export function balanceHistory(
           const previous = confirmations[index];
           const expected =
             BigInt(previous.amount_krw) +
-            netAfter(previous.as_of_date, row.as_of_date);
+            netAfter(
+              previous,
+              row.as_of_date,
+              row.before_day_transactions === 1,
+            );
           return {
             date: row.as_of_date,
             previousDate: previous.as_of_date,
@@ -71,6 +79,7 @@ export function balanceHistory(
 
   return {
     calculated: calculated?.toString() ?? null,
+    includesBaseDay: base?.before_day_transactions === 1,
     baseDate: base?.as_of_date ?? null,
     partial: !!base && base.as_of_date < "2026-10-31" && asOf >= ledgerStart,
     adjustments,

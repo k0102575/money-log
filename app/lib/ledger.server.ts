@@ -20,7 +20,11 @@ export function ledgerMonth(value: string | null) {
     : latest;
 }
 
-export async function saveTransaction(db: D1Database, form: FormData) {
+export async function saveTransaction(
+  db: D1Database,
+  form: FormData,
+  recurringId?: string,
+) {
   const transactionId = textValue(form, "transaction_id");
   const version = Number(textValue(form, "version"));
   let occurredOn: string;
@@ -58,6 +62,16 @@ export async function saveTransaction(db: D1Database, form: FormData) {
         .bind(transactionId)
         .first<Transaction>()
     : null;
+  if (
+    existing?.id.startsWith("saving:") &&
+    (kind !== "transfer" ||
+      category !== "saving" ||
+      destinationId !== existing.destination_id)
+  ) {
+    throw new InputError(
+      "확정한 납입은 같은 입금 계좌의 저축 이체로 유지해 주세요.",
+    );
+  }
   const previousAccounts = [existing?.account_id, existing?.destination_id];
   for (const id of [accountId, ...(destinationId ? [destinationId] : [])]) {
     const account = accounts.find((candidate) => candidate.id === id);
@@ -88,8 +102,8 @@ export async function saveTransaction(db: D1Database, form: FormData) {
         "거래가 변경되었습니다. 새로고침 후 다시 확인해 주세요.",
       );
   } else {
-    const requestKey = textValue(form, "request_key", true, 36);
-    if (!/^[0-9a-f-]{36}$/i.test(requestKey))
+    const requestKey = recurringId ?? textValue(form, "request_key", true, 36);
+    if (!recurringId && !/^[0-9a-f-]{36}$/i.test(requestKey))
       throw new InputError("화면을 새로고침한 뒤 다시 저장해 주세요.");
     await db
       .prepare(

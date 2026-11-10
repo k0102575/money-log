@@ -183,6 +183,23 @@ function MoneyForm({
           </Field>
         )}
       </div>
+      {!invested && (
+        <label className="flex items-start gap-2 text-sm">
+          <input
+            type="checkbox"
+            name="before_day_transactions"
+            defaultChecked={old?.before_day_transactions === 1}
+            className="mt-1"
+          />
+          <span>
+            확인일의 거래를 반영하기 전 잔액입니다.
+            <br />
+            <span className="helper">
+              선택하면 확인일 당일 거래도 잔액에 더하거나 뺍니다.
+            </span>
+          </span>
+        </label>
+      )}
       <Evidence
         defaults={
           old ??
@@ -379,7 +396,7 @@ export default function AccountDetail() {
               </p>
               <p className="helper mt-1 text-xs">
                 {calculatedBalance.baseDate
-                  ? `${calculatedBalance.baseDate} 확인 잔액에 다음 날부터의 거래를 반영`
+                  ? `${calculatedBalance.baseDate} 확인 잔액에 ${calculatedBalance.includesBaseDay ? "당일부터" : "다음 날부터"} 거래 반영`
                   : "확인 잔액을 한 번 입력하면 계산을 시작합니다."}
               </p>
               {calculatedBalance.partial && (

@@ -217,26 +217,22 @@ export default function Accounts() {
                       </p>
                       <div className="mt-6 border-t pt-4">
                         <p className="mb-1 text-[11px] text-muted-foreground">
-                          {invested ? "초기 누적 납입" : "확인 잔액"}
+                          {invested ? "초기 누적 납입" : "잔액"}
                         </p>
                         <p className="text-xl font-semibold tracking-tight tabular-nums">
-                          {won(balance?.amount_krw)}
+                          {invested
+                            ? won(balance?.amount_krw)
+                            : balanceWon(
+                                s.calculatedBalances[a.id]?.calculated ?? null,
+                              )}
                         </p>
                         <p className="mt-1 text-[11px] text-muted-foreground">
                           {balance
-                            ? `${balance.as_of_date} 확인`
+                            ? invested
+                              ? `${balance.as_of_date} 확인`
+                              : `${balance.as_of_date} 확인값 기준${s.calculatedBalances[a.id]?.partial ? " · 일부 기간 미집계" : ""}`
                             : "아직 금액을 입력하지 않았어요"}
                         </p>
-                        {!invested && (
-                          <p className="mt-3 text-xs">
-                            계산 잔액 ·{" "}
-                            {balanceWon(
-                              s.calculatedBalances[a.id]?.calculated ?? null,
-                            )}
-                            {s.calculatedBalances[a.id]?.partial &&
-                              " (일부 기간 미집계)"}
-                          </p>
-                        )}
                         {invested && (
                           <p className="mt-3 text-xs text-muted-foreground">
                             보유 상품 {products.length}개

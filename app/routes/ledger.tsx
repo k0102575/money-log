@@ -20,6 +20,13 @@ import { MoneyInput } from "~/components/money-input";
 import { Button } from "~/components/ui/button";
 import { Card, CardContent } from "~/components/ui/card";
 import { Input } from "~/components/ui/input";
+import { RecurringSavings } from "~/components/recurring-savings";
+import {
+  confirmSavings,
+  listSavingsRules,
+  plannedSavings,
+  saveSavingsRule,
+} from "~/lib/recurring-savings.server";
 import { actionFailure } from "~/lib/actions.server";
 import { mutation, requireSession } from "~/lib/auth.server";
 import { listAccounts } from "~/lib/db.server";
@@ -43,17 +50,26 @@ export async function loader({ request }: Route.LoaderArgs) {
   const query = new URL(request.url).searchParams;
   const month = ledgerMonth(query.get("month"));
   const { DB } = bindings();
-  const [accounts, transactions] = await Promise.all([
+  const [accounts, transactions, rules] = await Promise.all([
     listAccounts(DB),
     DB.prepare(
       "SELECT * FROM ledger_transactions WHERE occurred_on >= ? AND occurred_on <= ? ORDER BY occurred_on DESC, created_at DESC, id",
     )
       .bind(`${month}-01`, `${month}-31`)
       .all<Transaction>(),
+    listSavingsRules(DB),
   ]);
   const rows = transactions.results;
   const editing = rows.find((row) => row.id === query.get("edit"));
-  return { month, accounts, rows, editing, requestKey: crypto.randomUUID() };
+  return {
+    month,
+    accounts,
+    rows,
+    editing,
+    rules,
+    plans: await plannedSavings(DB, rules, month),
+    requestKey: crypto.randomUUID(),
+  };
 }
 
 export async function action({ request }: Route.ActionArgs) {
@@ -61,7 +77,14 @@ export async function action({ request }: Route.ActionArgs) {
     const form = await request.formData();
     await mutation(request, form);
     const { DB } = bindings();
-    if (form.get("intent") === "delete") {
+    const intent = form.get("intent");
+    if (intent === "save-savings" || intent === "confirm-savings") {
+      const month = ledgerMonth(String(form.get("month") ?? ""));
+      if (intent === "save-savings") await saveSavingsRule(DB, form);
+      else await confirmSavings(DB, form, month);
+      return redirect(`/ledger?month=${month}#planned-savings`);
+    }
+    if (intent === "delete") {
       await deleteTransaction(DB, form);
       return redirect(
         `/ledger?month=${ledgerMonth(String(form.get("month") ?? ""))}`,
@@ -221,6 +244,8 @@ export default function Ledger() {
           조회
         </Button>
       </Form>
+      <ActionError error={result?.error} />
+      <RecurringSavings data={data} />
       <Card className="py-0 sm:py-6">
         <CardContent className="space-y-3 p-5">
           <h2 className="font-semibold">
@@ -263,7 +288,6 @@ export default function Ledger() {
           <h2 className="font-semibold">
             {editing ? "거래 수정" : "거래 입력"}
           </h2>
-          <ActionError error={result?.error} />
           <p className="helper">
             온누리는 실제 충전 출금액만 지출로 입력하세요. 카드 지출을
             결제액으로 기록하면 개별 사용액은 같은 집계에 다시 넣지 않습니다.
