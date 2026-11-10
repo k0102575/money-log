@@ -15,7 +15,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
     <html lang="ko" suppressHydrationWarning>
       <head>
         <meta charSet="utf-8" />
-        <meta name="viewport" content="width=device-width,initial-scale=1" />
+        <meta
+          name="viewport"
+          content="width=device-width,initial-scale=1,viewport-fit=cover"
+        />
         <meta name="robots" content="noindex, nofollow" />
         <meta name="color-scheme" content="light dark" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -27,7 +30,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
           content="계좌와 보유 상품을 기록하고 나의 재무 현황을 정리합니다."
         />
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
-        <link rel="icon" type="image/svg+xml" href="/favicon.svg"/>
+        <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
         <Meta />
         <Links />
       </head>

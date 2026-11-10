@@ -1,3 +1,5 @@
+import { ledgerStart } from "./ledger.ts";
+import type { Transaction } from "./ledger.ts";
 import {
   accountTypes,
   choice,
@@ -70,6 +72,7 @@ export async function detail(db: D1Database, accountId: string) {
 export async function snapshot(
   db: D1Database,
   asOf: string,
+  includeLedger = false,
 ): Promise<Snapshot> {
   dateValue(asOf);
   const result = await db.batch([
@@ -77,9 +80,19 @@ export async function snapshot(
     db.prepare("SELECT * FROM account_observations"),
     db.prepare("SELECT * FROM investment_products ORDER BY created_at,id"),
     db.prepare("SELECT * FROM product_observations"),
+    ...(includeLedger && asOf >= ledgerStart
+      ? [
+          db
+            .prepare(
+              "SELECT * FROM ledger_transactions WHERE occurred_on BETWEEN ? AND ?",
+            )
+            .bind(asOf.slice(0, 7) + "-01", asOf),
+        ]
+      : []),
   ]);
   return {
     asOf,
+    transactions: result[4]?.results as unknown as Transaction[] | undefined,
     generatedAt: now(),
     accounts: result[0].results as unknown as Account[],
     observations: result[1].results as unknown as Observation[],
@@ -438,7 +451,7 @@ export async function draftReport(
       );
     return existing.id;
   }
-  const data = await snapshot(db, asOf),
+  const data = await snapshot(db, asOf, true),
     reportId = id(),
     markdown = makeMarkdown(data);
   await db
@@ -453,7 +466,7 @@ export async function draftReport(
       reportId,
       asOf,
       data.generatedAt,
-      "1",
+      "2",
       JSON.stringify(data),
       markdown,
       sessionId,

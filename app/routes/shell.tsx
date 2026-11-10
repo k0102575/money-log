@@ -2,6 +2,7 @@ export { shouldRevalidate } from "~/lib/revalidation";
 import { useEffect } from "react";
 import {
   Form,
+  Link,
   NavLink,
   Outlet,
   useLoaderData,
@@ -32,6 +33,7 @@ import {
   Wallet,
   LayoutGrid,
   FileText,
+  BookOpen,
   LogOut,
   ShieldCheck,
 } from "lucide-react";
@@ -77,25 +79,33 @@ export default function Shell() {
               <SidebarMenu>
                 {[
                   { url: "/", label: "계좌 현황", icon: LayoutGrid },
+                  { url: "/ledger", label: "월별 가계부", icon: BookOpen },
                   { url: "/reports", label: "MD 보고서", icon: FileText },
-                ].map((item) => (
-                  <SidebarMenuItem key={item.url}>
-                    <SidebarMenuButton
-                      asChild
-                      isActive={
-                        item.url === "/"
-                          ? !location.pathname.startsWith("/reports")
-                          : location.pathname.startsWith("/reports")
-                      }
-                      className="h-11 px-4"
-                    >
-                      <NavLink to={item.url}>
-                        <item.icon />
-                        <span>{item.label}</span>
-                      </NavLink>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                ))}
+                ].map((item) => {
+                  const active =
+                    item.url === "/"
+                      ? location.pathname === "/" ||
+                        /^\/accounts(?:\/|$)/.test(location.pathname)
+                      : location.pathname === item.url ||
+                        location.pathname.startsWith(item.url + "/");
+                  return (
+                    <SidebarMenuItem key={item.url}>
+                      <SidebarMenuButton
+                        asChild
+                        isActive={active}
+                        className="h-11 px-4"
+                      >
+                        <Link
+                          to={item.url}
+                          aria-current={active ? "page" : undefined}
+                        >
+                          <item.icon />
+                          <span>{item.label}</span>
+                        </Link>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  );
+                })}
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
@@ -128,11 +138,11 @@ export default function Shell() {
         </SidebarFooter>
       </Sidebar>
       <SidebarInset className="min-w-0 bg-background">
-        <header className="flex h-16 shrink-0 items-center gap-3 border-b bg-card/70 px-5">
+        <header className="workspace-header flex h-16 shrink-0 items-center gap-3 border-b bg-card px-4 sm:px-5">
           <SidebarTrigger aria-label="메뉴 열기·닫기" title="메뉴 열기·닫기" />
           <Separator orientation="vertical" className="h-4" />
           <span className="text-sm text-muted-foreground">내 워크스페이스</span>
-          <span className="ml-auto rounded-full border px-2.5 py-1 text-[10px] tracking-wide text-muted-foreground">
+          <span className="ml-auto hidden rounded-full border px-2.5 sm:inline-flex py-1 text-[10px] tracking-wide text-muted-foreground">
             PERSONAL
           </span>
         </header>

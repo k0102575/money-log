@@ -8,6 +8,12 @@ export function testDb() {
       "utf8",
     ),
   );
+  sql.exec(
+    readFileSync(
+      new URL("../migrations/0002_transactions.sql", import.meta.url),
+      "utf8",
+    ),
+  );
   const prepare = (text: string) => {
     let args: unknown[] = [];
     const query = {

@@ -1,3 +1,4 @@
+import { ChevronDown } from "lucide-react";
 import {
   Children,
   cloneElement,
@@ -65,13 +66,16 @@ export function Select({
   ...props
 }: React.ComponentProps<"select"> & { options: Record<string, string> }) {
   return (
-    <select className="native-select" {...props}>
-      {Object.entries(options).map(([key, value]) => (
-        <option key={key} value={key}>
-          {value}
-        </option>
-      ))}
-    </select>
+    <div className="relative min-w-0">
+      <select {...props} className={`native-select ${props.className ?? ""}`}>
+        {Object.entries(options).map(([key, value]) => (
+          <option key={key} value={key}>
+            {value}
+          </option>
+        ))}
+      </select>
+      <ChevronDown aria-hidden="true" className="native-select-chevron" />
+    </div>
   );
 }
 export function Submit({

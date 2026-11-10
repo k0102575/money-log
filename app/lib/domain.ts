@@ -1,3 +1,4 @@
+import type { Transaction } from "./ledger.ts";
 export const accountTypes = {
   checking: "입출금",
   cma: "CMA",
@@ -169,6 +170,7 @@ export interface ProductObservation {
   recorded_at: string;
 }
 export interface Snapshot {
+  transactions?: Transaction[];
   asOf: string;
   generatedAt: string;
   accounts: Account[];

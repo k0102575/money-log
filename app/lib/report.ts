@@ -1,3 +1,4 @@
+import { ledgerSummary } from "./ledger.ts";
 import {
   accountTypes,
   current,
@@ -26,7 +27,9 @@ export function makeMarkdown(snapshot: Snapshot) {
     `- 기준일: ${asOf}`,
     `- 생성 시각: ${new Date(generatedAt).toLocaleString("sv-SE", { timeZone: "Asia/Seoul" })} (Asia/Seoul)`,
     "- 자료: Money Log에 직접 입력한 기록. 금액과 수량은 각 항목의 확인일 기준입니다.",
-    "- 범위: 직접 등록한 계좌와 보유 상품. 부채·수입·지출은 포함하지 않습니다.",
+    snapshot.transactions
+      ? "- 범위: 직접 등록한 계좌·보유 상품과 기준일이 속한 달의 입력 거래. 부채 잔액은 범위 밖입니다."
+      : "- 범위: 직접 등록한 계좌와 보유 상품.",
     "- 전체 현재 순자산은 계산하지 않습니다. 투자 납입액은 현재 자산 가치가 아닙니다.",
     "",
   ];
@@ -168,5 +171,31 @@ export function makeMarkdown(snapshot: Snapshot) {
     "- 과거 기준일 재생성 시 계좌 이름·상품명은 생성 당시 정보를 사용합니다. 당시 출력은 저장된 보고서를 확인하세요.",
     "",
   );
+  if (snapshot.transactions) {
+    const totals = ledgerSummary(snapshot.transactions);
+    lines.push(
+      "",
+      "## 월별 가계부 요약",
+      "",
+      `- 집계 기간: ${asOf.slice(0, 7)}-01 ~ ${asOf}`,
+      `- 입력한 거래: ${snapshot.transactions.length}건`,
+      "- 입력한 거래만 집계합니다. 계좌 잔액은 금융기관에서 확인한 기록입니다.",
+      "",
+      "| 항목 | 금액 |",
+      "|---|---:|",
+    );
+    for (const [label, amount] of [
+      ["수입", totals.income],
+      ["소비 지출", totals.expense],
+      ["부채 상환", totals.repayment],
+      ["수입 − 지출 − 상환", totals.net],
+      ["계좌이체", totals.transfer],
+      ["이체 중 저축 납입", totals.saving],
+      ["이체 중 투자 납입", totals.investment],
+    ] as const) {
+      lines.push(`| ${label} | ${amount.toLocaleString("ko-KR")}원 |`);
+    }
+    lines.push("");
+  }
   return lines.join("\n");
 }

@@ -63,7 +63,7 @@ export default function Reports() {
               있어도 생성할 수 있어요.
             </p>
             <p className="helper mt-4 text-xs">
-              전체 순자산·월별 수입·지출은 포함하지 않습니다.
+              기준일이 속한 달에 입력한 거래도 함께 집계합니다.
               <br />
               잔액 소계는 확인일별로 나누어 표시합니다.
             </p>
