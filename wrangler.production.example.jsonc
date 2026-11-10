@@ -1,0 +1,14 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "money-log",
+  "main": "workers/app.ts",
+  "compatibility_date": "2026-11-03",
+  "compatibility_flags": ["nodejs_compat"],
+  "vars": { "APP_ORIGIN": "https://YOUR-WORKER.YOUR-SUBDOMAIN.workers.dev" },
+  "d1_databases": [{
+    "binding": "DB", "database_name": "money-log-production",
+    "database_id": "REPLACE_WITH_PRODUCTION_D1_ID",
+    "migrations_dir": "migrations"
+  }],
+  "observability": { "enabled": false }
+}

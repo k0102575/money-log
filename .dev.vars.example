@@ -1,0 +1,4 @@
+# npm run password:setup 으로 .dev.vars를 생성하세요.
+# 실제 비밀번호나 인증 값을 이 파일에 넣지 마세요.
+PASSWORD_HASH=""
+AUTH_VERSION="1"
