@@ -8,6 +8,7 @@ import {
 } from "react-router";
 import type { Route } from "./+types/account-detail";
 import { mutation, requireSession } from "~/lib/auth.server";
+import { balanceWon } from "~/lib/balance";
 import { bindings } from "~/lib/env.server";
 import {
   archiveAccount,
@@ -280,6 +281,7 @@ export default function AccountDetail() {
     observations,
     products,
     quantities,
+    balance: calculatedBalance,
   } = useLoaderData<typeof loader>();
   const result = useActionData<typeof action>();
   const [params] = useSearchParams();
@@ -368,7 +370,62 @@ export default function AccountDetail() {
             </CardContent>
           </Card>
         ))}
+        {calculatedBalance && (
+          <Card className="shadow-none">
+            <CardContent className="p-5">
+              <p className="text-xs text-muted-foreground">계산 잔액</p>
+              <p className="mt-3 text-2xl font-semibold tabular-nums">
+                {balanceWon(calculatedBalance.calculated)}
+              </p>
+              <p className="helper mt-1 text-xs">
+                {calculatedBalance.baseDate
+                  ? `${calculatedBalance.baseDate} 확인 잔액에 다음 날부터의 거래를 반영`
+                  : "확인 잔액을 한 번 입력하면 계산을 시작합니다."}
+              </p>
+              {calculatedBalance.partial && (
+                <p className="helper text-xs">
+                  11월 거래 기록 시작 전 구간은 미집계입니다.
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        )}
       </div>
+      {calculatedBalance && a.account_type === "cma" && (
+        <Card className="mb-6 shadow-none">
+          <CardHeader>
+            <CardTitle className="text-base">CMA 확인 잔액 대조</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <p className="helper">
+              월말에 증권사에서 확인한 잔액을 입력하세요. 새 확인값이 다음
+              날부터 계산 기준이 되며, 차이는 월별 수입·지출과 별도로
+              표시됩니다.
+            </p>
+            {calculatedBalance.adjustments.length === 0 && (
+              <p className="helper">두 번째 확인 잔액부터 차이를 표시합니다.</p>
+            )}
+            {calculatedBalance.adjustments.map((row) => (
+              <div className="rounded-lg border p-3 text-sm" key={row.date}>
+                <p className="font-medium">
+                  {row.date} · CMA 잔액 차이{" "}
+                  {BigInt(row.difference) > 0n ? "+" : ""}
+                  {balanceWon(row.difference)}
+                </p>
+                <p className="helper">
+                  {row.previousDate} 이후 계산 {balanceWon(row.expected)} · 확인{" "}
+                  {won(row.confirmed)}
+                </p>
+                {row.partial && (
+                  <p className="helper">
+                    11월 이전 미집계 구간이 포함된 비교입니다.
+                  </p>
+                )}
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
       {invested && (
         <p className="helper mb-7">
           초기 납입·인출은 과거 누적치이며 현재 평가액이 아닙니다. 상품 평가액과

@@ -1,3 +1,4 @@
+import { balanceHistory } from "./balance.ts";
 import { ledgerStart } from "./ledger.ts";
 import type { Transaction } from "./ledger.ts";
 import {
@@ -45,6 +46,7 @@ export async function listAccounts(db: D1Database) {
 }
 export async function detail(db: D1Database, accountId: string) {
   const account = await getAccount(db, accountId);
+  const asOf = today();
   const results = await db.batch([
     db
       .prepare(
@@ -61,10 +63,25 @@ export async function detail(db: D1Database, accountId: string) {
         "SELECT q.* FROM product_observations q JOIN investment_products p ON q.product_id=p.id WHERE p.account_id=? ORDER BY q.as_of_date DESC,q.recorded_at DESC",
       )
       .bind(accountId),
+    db
+      .prepare(
+        "SELECT * FROM ledger_transactions WHERE occurred_on<=? AND (account_id=? OR destination_id=?)",
+      )
+      .bind(asOf, accountId, accountId),
   ]);
+  const observations = results[0].results as unknown as Observation[];
   return {
     account,
-    observations: results[0].results as unknown as Observation[],
+    observations,
+    balance: isInvestment(account.account_type)
+      ? null
+      : balanceHistory(
+          accountId,
+          observations,
+          results[3].results as unknown as Transaction[],
+          asOf,
+          account.account_type === "cma",
+        ),
     products: results[1].results as unknown as Product[],
     quantities: results[2].results as unknown as ProductObservation[],
   };
@@ -72,7 +89,7 @@ export async function detail(db: D1Database, accountId: string) {
 export async function snapshot(
   db: D1Database,
   asOf: string,
-  includeLedger = false,
+  ledgerScope: boolean | "all" = false,
 ): Promise<Snapshot> {
   dateValue(asOf);
   const result = await db.batch([
@@ -80,13 +97,16 @@ export async function snapshot(
     db.prepare("SELECT * FROM account_observations"),
     db.prepare("SELECT * FROM investment_products ORDER BY created_at,id"),
     db.prepare("SELECT * FROM product_observations"),
-    ...(includeLedger && asOf >= ledgerStart
+    ...(ledgerScope && asOf >= ledgerStart
       ? [
           db
             .prepare(
               "SELECT * FROM ledger_transactions WHERE occurred_on BETWEEN ? AND ?",
             )
-            .bind(asOf.slice(0, 7) + "-01", asOf),
+            .bind(
+              ledgerScope === "all" ? ledgerStart : asOf.slice(0, 7) + "-01",
+              asOf,
+            ),
         ]
       : []),
   ]);

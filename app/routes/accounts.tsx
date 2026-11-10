@@ -3,6 +3,7 @@ import { Link, useLoaderData } from "react-router";
 import type { Route } from "./+types/accounts";
 import { requireSession } from "~/lib/auth.server";
 import { bindings } from "~/lib/env.server";
+import { balanceHistory, balanceWon } from "~/lib/balance";
 import { snapshot } from "~/lib/db.server";
 import {
   accountTypes,
@@ -28,7 +29,26 @@ import {
 } from "lucide-react";
 export async function loader({ request }: Route.LoaderArgs) {
   await requireSession(request);
-  return snapshot(bindings().DB, today());
+  const { transactions, ...data } = await snapshot(
+    bindings().DB,
+    today(),
+    "all",
+  );
+  const calculatedBalances = Object.fromEntries(
+    data.accounts
+      .filter((account) => !isInvestment(account.account_type))
+      .map((account) => [
+        account.id,
+        balanceHistory(
+          account.id,
+          data.observations,
+          transactions ?? [],
+          data.asOf,
+          false,
+        ),
+      ]),
+  );
+  return { ...data, calculatedBalances };
 }
 export default function Accounts() {
   const s = useLoaderData<typeof loader>();
@@ -207,6 +227,16 @@ export default function Accounts() {
                             ? `${balance.as_of_date} 확인`
                             : "아직 금액을 입력하지 않았어요"}
                         </p>
+                        {!invested && (
+                          <p className="mt-3 text-xs">
+                            계산 잔액 ·{" "}
+                            {balanceWon(
+                              s.calculatedBalances[a.id]?.calculated ?? null,
+                            )}
+                            {s.calculatedBalances[a.id]?.partial &&
+                              " (일부 기간 미집계)"}
+                          </p>
+                        )}
                         {invested && (
                           <p className="mt-3 text-xs text-muted-foreground">
                             보유 상품 {products.length}개
