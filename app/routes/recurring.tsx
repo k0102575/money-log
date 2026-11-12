@@ -1,3 +1,6 @@
+import { uncachedAction } from "~/lib/page-cache";
+import { cachedPage } from "~/lib/page-cache";
+import { PageHeader } from "~/components/page-header";
 export { shouldRevalidate } from "~/lib/revalidation";
 import {
   Form,
@@ -13,15 +16,14 @@ import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
 import { actionFailure } from "~/lib/actions.server";
 import { mutation, requireSession } from "~/lib/auth.server";
-import { listAccounts } from "~/lib/db.server";
 import { InputError, today } from "~/lib/domain";
 import { bindings } from "~/lib/env.server";
 import { ledgerStart } from "~/lib/ledger";
 import { ledgerMonth } from "~/lib/ledger.server";
 import {
+  manageSavingsRule,
   confirmSavings,
-  listSavingsRules,
-  plannedSavings,
+  savingsPageData,
   saveSavingsRule,
 } from "~/lib/recurring-savings.server";
 
@@ -29,16 +31,8 @@ export async function loader({ request }: Route.LoaderArgs) {
   await requireSession(request);
   const month = ledgerMonth(new URL(request.url).searchParams.get("month"));
   const { DB } = bindings();
-  const [accounts, rules] = await Promise.all([
-    listAccounts(DB),
-    listSavingsRules(DB),
-  ]);
-  return {
-    accounts,
-    rules,
-    month,
-    plans: await plannedSavings(DB, rules, month),
-  };
+  const { accounts, rules, plans } = await savingsPageData(DB, month);
+  return { accounts, rules, month, plans };
 }
 
 export async function action({ request }: Route.ActionArgs) {
@@ -48,6 +42,10 @@ export async function action({ request }: Route.ActionArgs) {
     const { DB } = bindings();
     const month = ledgerMonth(String(form.get("month") ?? ""));
     switch (form.get("intent")) {
+      case "stop-savings":
+      case "delete-savings":
+        await manageSavingsRule(DB, form);
+        break;
       case "save-savings":
         await saveSavingsRule(DB, form);
         break;
@@ -68,13 +66,10 @@ export default function Recurring() {
   const result = useActionData<typeof action>();
   return (
     <main className="page space-y-6">
-      <header>
-        <h1 className="page-title">정기 납입</h1>
-        <p className="helper mt-2">
-          적금·청약의 반복 규칙을 관리하고 매달 실제 납입을 확정하세요. 확정한
-          이체는 월별 가계부에도 표시됩니다.
-        </p>
-      </header>
+      <PageHeader
+        title="정기 납입"
+        description="매달 납입할 금액과 날짜를 관리하고 실제 출금 내역을 확인하세요."
+      />
       <Form
         method="get"
         className="grid w-full max-w-xs grid-cols-[minmax(0,1fr)_auto] items-end gap-2"
@@ -101,4 +96,15 @@ export default function Recurring() {
       </Button>
     </main>
   );
+}
+
+export async function clientLoader({
+  request,
+  serverLoader,
+}: Route.ClientLoaderArgs) {
+  return cachedPage(request, serverLoader);
+}
+
+export async function clientAction({ serverAction }: Route.ClientActionArgs) {
+  return uncachedAction(serverAction);
 }

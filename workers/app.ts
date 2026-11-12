@@ -1,3 +1,4 @@
+import { requestSessions } from "../app/lib/request-session.server";
 import { createRequestHandler } from "react-router";
 const robotsTag = "noindex, nofollow";
 const handle = createRequestHandler(
@@ -7,7 +8,9 @@ const handle = createRequestHandler(
 export default {
   async fetch(request) {
     try {
-      const response = await handle(request);
+      const response = await requestSessions.run(new Map(), () =>
+        handle(request),
+      );
       const headers = new Headers(response.headers);
       headers.set("X-Robots-Tag", robotsTag);
       headers.set("Cache-Control", "private, no-store");

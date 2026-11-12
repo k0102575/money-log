@@ -1,3 +1,5 @@
+import { cachedPage } from "~/lib/page-cache";
+import { PageHeader } from "~/components/page-header";
 export { shouldRevalidate } from "~/lib/revalidation";
 import { Link, useLoaderData } from "react-router";
 import type { Route } from "./+types/accounts";
@@ -56,30 +58,27 @@ export default function Accounts() {
   const active = s.accounts.filter((a) => !a.archived_at);
   return (
     <main className="page">
-      <div className="mb-9 flex flex-wrap items-end justify-between gap-5">
-        <div>
-          <p className="eyebrow mb-3">MY ACCOUNTS</p>
-          <h1 className="page-title">나의 계좌 현황</h1>
-          <p className="helper mt-2">
-            흩어진 계좌와 보유 상품을 한곳에서 확인하세요.
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <AccountSettings />
-          <Button variant="outline" asChild>
-            <Link to="/reports">
-              <FileDown />
-              MD 보고서
-            </Link>
-          </Button>
-          <Button asChild>
-            <Link to="/accounts/new">
-              <Plus />
-              계좌 추가
-            </Link>
-          </Button>
-        </div>
-      </div>
+      <PageHeader
+        title="나의 계좌 현황"
+        description="흩어진 계좌와 보유 상품을 한곳에서 확인하세요."
+        actions={
+          <>
+            <AccountSettings />
+            <Button variant="outline" asChild>
+              <Link to="/reports">
+                <FileDown />
+                MD 보고서
+              </Link>
+            </Button>
+            <Button asChild>
+              <Link to="/accounts/new">
+                <Plus />
+                계좌 추가
+              </Link>
+            </Button>
+          </>
+        }
+      />
       <div className="mb-9 grid gap-3 sm:grid-cols-3">
         {[
           {
@@ -267,4 +266,11 @@ export default function Accounts() {
       </div>
     </main>
   );
+}
+
+export async function clientLoader({
+  request,
+  serverLoader,
+}: Route.ClientLoaderArgs) {
+  return cachedPage(request, serverLoader);
 }

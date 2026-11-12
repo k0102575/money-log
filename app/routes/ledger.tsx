@@ -1,3 +1,6 @@
+import { uncachedAction } from "~/lib/page-cache";
+import { cachedPage } from "~/lib/page-cache";
+import { PageHeader } from "~/components/page-header";
 export { shouldRevalidate } from "~/lib/revalidation";
 import { useState } from "react";
 import {
@@ -6,6 +9,7 @@ import {
   redirect,
   useActionData,
   useLoaderData,
+  useSearchParams,
 } from "react-router";
 import type { Route } from "./+types/ledger";
 import {
@@ -20,13 +24,9 @@ import { MoneyInput } from "~/components/money-input";
 import { Button } from "~/components/ui/button";
 import { Card, CardContent } from "~/components/ui/card";
 import { Input } from "~/components/ui/input";
-import {
-  listSavingsRules,
-  plannedSavings,
-} from "~/lib/recurring-savings.server";
+import { savingsPageData } from "~/lib/recurring-savings.server";
 import { actionFailure } from "~/lib/actions.server";
 import { mutation, requireSession } from "~/lib/auth.server";
-import { listAccounts } from "~/lib/db.server";
 import { today, won } from "~/lib/domain";
 import { bindings } from "~/lib/env.server";
 import {
@@ -47,25 +47,12 @@ export async function loader({ request }: Route.LoaderArgs) {
   const query = new URL(request.url).searchParams;
   const month = ledgerMonth(query.get("month"));
   const { DB } = bindings();
-  const [accounts, transactions, rules] = await Promise.all([
-    listAccounts(DB),
-    DB.prepare(
-      "SELECT * FROM ledger_transactions WHERE occurred_on >= ? AND occurred_on <= ? ORDER BY occurred_on DESC, created_at DESC, id",
-    )
-      .bind(`${month}-01`, `${month}-31`)
-      .all<Transaction>(),
-    listSavingsRules(DB),
-  ]);
-  const rows = transactions.results;
-  const editing = rows.find((row) => row.id === query.get("edit"));
+  const { accounts, rows, plans } = await savingsPageData(DB, month, true);
   return {
     month,
     accounts,
     rows,
-    editing,
-    pendingSavings: (await plannedSavings(DB, rules, month)).filter(
-      (plan) => !plan.transaction,
-    ).length,
+    pendingSavings: plans.filter((plan) => !plan.transaction).length,
     requestKey: crypto.randomUUID(),
   };
 }
@@ -91,7 +78,7 @@ export async function action({ request }: Route.ActionArgs) {
 function TransactionForm({
   data,
 }: {
-  data: Awaited<ReturnType<typeof loader>>;
+  data: Awaited<ReturnType<typeof loader>> & { editing?: Transaction };
 }) {
   const { accounts, editing, month, requestKey } = data;
   const [kind, setKind] = useState<Transaction["kind"]>(
@@ -203,20 +190,22 @@ function TransactionForm({
 }
 
 export default function Ledger() {
-  const data = useLoaderData<typeof loader>();
+  const loaded = useLoaderData<typeof loader>();
+  const [query] = useSearchParams();
+  const data = {
+    ...loaded,
+    editing: loaded.rows.find((row) => row.id === query.get("edit")),
+  };
   const result = useActionData<typeof action>();
   const { month, accounts, rows, editing, requestKey } = data;
   const totals = ledgerSummary(rows, accounts);
   const names = new Map(accounts.map((account) => [account.id, account.alias]));
   return (
     <main className="page space-y-6">
-      <header>
-        <h1 className="page-title">월별 가계부</h1>
-        <p className="helper mt-2">
-          월말에 한 달 치를 모아 입력해도 됩니다. 거래일은 실제로 돈이 오간
-          날짜를 선택하세요.
-        </p>
-      </header>
+      <PageHeader
+        title="월별 가계부"
+        description="실제로 돈이 오간 날짜로 거래를 입력하고 월별 내역을 확인하세요."
+      />
       <Form
         method="get"
         className="grid w-full max-w-xs grid-cols-[minmax(0,1fr)_auto] items-end gap-2"
@@ -354,4 +343,15 @@ export default function Ledger() {
       </section>
     </main>
   );
+}
+
+export async function clientLoader({
+  request,
+  serverLoader,
+}: Route.ClientLoaderArgs) {
+  return cachedPage(request, serverLoader);
+}
+
+export async function clientAction({ serverAction }: Route.ClientActionArgs) {
+  return uncachedAction(serverAction);
 }

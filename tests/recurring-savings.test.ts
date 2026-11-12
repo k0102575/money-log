@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  projectSavings,
+  savingsPageData,
+  manageSavingsRule,
   confirmSavings,
   listSavingsRules,
   plannedSavings,
@@ -124,5 +127,62 @@ test("반복 납입은 적용 월과 만기를 지키고 실제 저축 이체를
   assert.deepEqual(
     (await plans("2029-03")).map(({ rule }) => rule.destination_id),
     ["housing"],
+  );
+  await assert.rejects(
+    manageSavingsRule(
+      db,
+      fields({
+        intent: "delete-savings",
+        destination_id: "youth",
+      }),
+    ),
+    /확정한 납입/,
+  );
+  const page = await savingsPageData(db, "2026-11", true);
+  assert.equal(page.rows.length, 1);
+  assert.deepEqual(page.plans, await plans("2026-11"));
+  assert.deepEqual(
+    projectSavings(page.rules, "2026-11", page.rows),
+    page.plans,
+  );
+  const pendingOnly = await savingsPageData(db, "2026-11");
+  assert.equal(pendingOnly.rows.length, 0);
+  assert.deepEqual(pendingOnly.plans, page.plans);
+  const stopMonth = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Seoul",
+    year: "numeric",
+    month: "2-digit",
+  })
+    .format(new Date())
+    .slice(0, 7);
+  await manageSavingsRule(
+    db,
+    fields({
+      intent: "stop-savings",
+      destination_id: "youth",
+      stop_month: stopMonth,
+    }),
+  );
+  assert.equal(
+    (await plans(stopMonth)).some(
+      ({ rule, transaction }) =>
+        rule.destination_id === "youth" && !transaction,
+    ),
+    false,
+  );
+  assert.equal(
+    sql.prepare("SELECT COUNT(*) AS count FROM ledger_transactions").get()
+      ?.count,
+    1,
+  );
+  await manageSavingsRule(
+    db,
+    fields({ intent: "delete-savings", destination_id: "housing" }),
+  );
+  assert.equal(
+    (await listSavingsRules(db)).some(
+      (rule) => rule.destination_id === "housing",
+    ),
+    false,
   );
 });

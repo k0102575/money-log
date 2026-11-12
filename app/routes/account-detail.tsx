@@ -1,3 +1,6 @@
+import { uncachedAction } from "~/lib/page-cache";
+import { cachedPage } from "~/lib/page-cache";
+import { PageHeader } from "~/components/page-header";
 export { shouldRevalidate } from "~/lib/revalidation";
 import {
   Link,
@@ -52,15 +55,7 @@ import { Input } from "~/components/ui/input";
 import { Button } from "~/components/ui/button";
 import { Badge } from "~/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card";
-import {
-  ArrowLeft,
-  Plus,
-  History,
-  Package,
-  Landmark,
-  Archive,
-  Check,
-} from "lucide-react";
+import { Plus, History, Package, Landmark, Archive, Check } from "lucide-react";
 export async function loader({ request, params }: Route.LoaderArgs) {
   await requireSession(request);
   return detail(bindings().DB, params.accountId);
@@ -328,28 +323,22 @@ export default function AccountDetail() {
   );
   return (
     <main className="page">
-      <Link
-        to="/accounts"
-        className="mb-6 flex items-center gap-2 text-xs text-muted-foreground"
-      >
-        <ArrowLeft className="size-3.5" />
-        계좌 현황
-      </Link>
-      <div className="mb-7 flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <div className="mb-3 flex gap-2">
+      <PageHeader
+        title={a.alias}
+        description={`${a.institution} · ${a.tracking_start_date}부터 기록`}
+        back={{ to: "/accounts", label: "계좌 현황" }}
+        badge={
+          <>
             <Badge variant="secondary">{accountTypes[a.account_type]}</Badge>
             {a.archived_at && <Badge variant="outline">보관된 계좌</Badge>}
-          </div>
-          <h1 className="page-title">{a.alias}</h1>
-          <p className="helper mt-2">
-            {a.institution} · {a.tracking_start_date}부터 기록
-          </p>
-        </div>
-        <Button asChild variant="outline">
-          <Link to="/reports">MD로 정리</Link>
-        </Button>
-      </div>
+          </>
+        }
+        actions={
+          <Button asChild variant="outline">
+            <Link to="/reports">MD로 정리</Link>
+          </Button>
+        }
+      />
       <ActionError error={result?.error} />
       {result && "success" in result && (
         <div
@@ -739,4 +728,15 @@ export default function AccountDetail() {
       </div>
     </main>
   );
+}
+
+export async function clientLoader({
+  request,
+  serverLoader,
+}: Route.ClientLoaderArgs) {
+  return cachedPage(request, serverLoader);
+}
+
+export async function clientAction({ serverAction }: Route.ClientActionArgs) {
+  return uncachedAction(serverAction);
 }

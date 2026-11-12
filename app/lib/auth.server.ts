@@ -1,3 +1,4 @@
+import { requestSessions } from "./request-session.server";
 import { redirect } from "react-router";
 import { bindings } from "./env.server";
 import { randomToken, sha, verifyPassword } from "./crypto";
@@ -37,7 +38,18 @@ export function checkOrigin(request: Request) {
   if (request.method !== "POST")
     throw new Response("허용되지 않은 요청입니다.", { status: 405 });
 }
-export async function session(request: Request) {
+export function session(request: Request) {
+  const cache = requestSessions.getStore();
+  const token = cookie(request, sessionName(request));
+  if (!cache) return readSession(request);
+  let result = cache.get(token);
+  if (!result) {
+    result = readSession(request);
+    cache.set(token, result);
+  }
+  return result;
+}
+async function readSession(request: Request) {
   const token = cookie(request, sessionName(request));
   if (!/^[a-f0-9]{64}$/.test(token)) return null;
   const { DB, AUTH_VERSION } = bindings();

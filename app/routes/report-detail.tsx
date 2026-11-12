@@ -1,3 +1,5 @@
+import { uncachedAction } from "~/lib/page-cache";
+import { PageHeader } from "~/components/page-header";
 export { shouldRevalidate } from "~/lib/revalidation";
 import { useEffect } from "react";
 import { Link, useLoaderData, useFetcher } from "react-router";
@@ -11,7 +13,7 @@ import { Button } from "~/components/ui/button";
 import { Badge } from "~/components/ui/badge";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { ArrowLeft, Download, Check, Clock3 } from "lucide-react";
+import { Download, Check, Clock3 } from "lucide-react";
 export async function loader({ request, params }: Route.LoaderArgs) {
   const s = await requireSession(request);
   const report = await readReport(bindings().DB, params.reportId, s.id);
@@ -48,15 +50,11 @@ export default function ReportDetail() {
   }, [result]);
   return (
     <main className="page max-w-5xl">
-      <Link
-        to="/reports"
-        className="mb-6 flex items-center gap-2 text-xs text-muted-foreground"
-      >
-        <ArrowLeft className="size-3.5" />
-        보고서 목록
-      </Link>
-      <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
-        <div>
+      <PageHeader
+        title={`${r.asOf} 계좌 현황`}
+        description="내용을 확인하고 Markdown 파일로 내려받으세요."
+        back={{ to: "/reports", label: "보고서 목록" }}
+        badge={
           <Badge variant="outline" className="mb-3">
             {r.status === "saved" ? (
               <>
@@ -70,28 +68,26 @@ export default function ReportDetail() {
               </>
             )}
           </Badge>
-          <h1 className="page-title">{r.asOf} 계좌 현황</h1>
-          <p className="helper mt-2">
-            내용을 확인하고 Markdown 파일로 내려받으세요.
-          </p>
-        </div>
-        {r.status === "saved" ? (
-          <Button asChild>
-            <a href={`/reports/${r.id}/download`} download>
-              <Download />
-              MD 다운로드
-            </a>
-          </Button>
-        ) : (
-          <fetcher.Form method="post">
-            <Csrf />
-            <Button type="submit" disabled={fetcher.state !== "idle"}>
-              <Download />
-              {fetcher.state !== "idle" ? "저장 중…" : "저장·MD 다운로드"}
+        }
+        actions={
+          r.status === "saved" ? (
+            <Button asChild>
+              <a href={`/reports/${r.id}/download`} download>
+                <Download />
+                MD 다운로드
+              </a>
             </Button>
-          </fetcher.Form>
-        )}
-      </div>
+          ) : (
+            <fetcher.Form method="post">
+              <Csrf />
+              <Button type="submit" disabled={fetcher.state !== "idle"}>
+                <Download />
+                {fetcher.state !== "idle" ? "저장 중…" : "저장·MD 다운로드"}
+              </Button>
+            </fetcher.Form>
+          )
+        }
+      />
       <ActionError error={result?.error} />
       <p className="callout mb-6">
         {r.status === "draft"
@@ -112,4 +108,8 @@ export default function ReportDetail() {
       </details>
     </main>
   );
+}
+
+export async function clientAction({ serverAction }: Route.ClientActionArgs) {
+  return uncachedAction(serverAction);
 }

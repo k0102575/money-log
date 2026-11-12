@@ -1,3 +1,4 @@
+import { uncachedAction } from "~/lib/page-cache";
 import {
   data,
   redirect,
@@ -115,4 +116,8 @@ export default function Login() {
       </footer>
     </main>
   );
+}
+
+export async function clientAction({ serverAction }: Route.ClientActionArgs) {
+  return uncachedAction(serverAction);
 }

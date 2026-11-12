@@ -1,3 +1,6 @@
+import { uncachedAction } from "~/lib/page-cache";
+import { cachedPage } from "~/lib/page-cache";
+import { PageHeader } from "~/components/page-header";
 export { shouldRevalidate } from "~/lib/revalidation";
 import { Link, redirect, useLoaderData, useActionData } from "react-router";
 import type { Route } from "./+types/reports";
@@ -43,11 +46,10 @@ export default function Reports() {
   const result = useActionData<typeof action>();
   return (
     <main className="page">
-      <p className="eyebrow mb-3">YOUR FINANCIAL SNAPSHOT</p>
-      <h1 className="page-title">MD 보고서</h1>
-      <p className="helper mt-2 mb-8">
-        계좌와 보유 상품을 한 문서로 정리하세요.
-      </p>
+      <PageHeader
+        title="MD 보고서"
+        description="계좌와 보유 상품을 한 문서로 정리하세요."
+      />
       <ActionError error={result?.error} />
       <Card className="mb-10 overflow-hidden shadow-none">
         <CardContent className="grid gap-8 p-6 md:grid-cols-2 md:p-8">
@@ -129,4 +131,15 @@ export default function Reports() {
       )}
     </main>
   );
+}
+
+export async function clientLoader({
+  request,
+  serverLoader,
+}: Route.ClientLoaderArgs) {
+  return cachedPage(request, serverLoader);
+}
+
+export async function clientAction({ serverAction }: Route.ClientActionArgs) {
+  return uncachedAction(serverAction);
 }

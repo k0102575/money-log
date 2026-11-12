@@ -1,5 +1,18 @@
-export { shouldRevalidate } from "~/lib/revalidation";
-import { Form, Link, Outlet, useLoaderData, useLocation } from "react-router";
+import { shouldRevalidate as defaultRevalidation } from "~/lib/revalidation";
+import type { ShouldRevalidateFunction } from "react-router";
+export const shouldRevalidate: ShouldRevalidateFunction = (args) => {
+  if (!args.formMethod && args.currentUrl.href !== args.nextUrl.href)
+    return false;
+  return defaultRevalidation(args);
+};
+import {
+  Form,
+  Link,
+  Outlet,
+  useLoaderData,
+  useLocation,
+  useNavigation,
+} from "react-router";
 import type { Route } from "./+types/shell";
 import { requireSession } from "~/lib/auth.server";
 import {
@@ -29,6 +42,7 @@ import {
   CalendarClock,
   LogOut,
   ShieldCheck,
+  LoaderCircle,
 } from "lucide-react";
 export async function loader({ request }: Route.LoaderArgs) {
   const s = await requireSession(request);
@@ -70,6 +84,11 @@ function isActive(pathname: string, url: string) {
 
 function DesktopSidebar({ csrf }: { csrf: string }) {
   const location = useLocation();
+  const transition = useNavigation();
+  const loadingPath =
+    transition.state === "loading" && !transition.formMethod
+      ? transition.location.pathname
+      : null;
   const { isMobile } = useSidebar();
   if (isMobile) return null;
   return (
@@ -98,20 +117,36 @@ function DesktopSidebar({ csrf }: { csrf: string }) {
             <SidebarMenu>
               {navigation.map((item) => {
                 const active = isActive(location.pathname, item.url);
+                const pending =
+                  !!loadingPath && isActive(loadingPath, item.url);
+                const selected = loadingPath ? pending : active;
                 return (
                   <SidebarMenuItem key={item.url}>
                     <SidebarMenuButton
                       asChild
-                      isActive={active}
-                      tooltip={item.label}
+                      isActive={selected}
+                      tooltip={pending ? item.label + " · 이동 중" : item.label}
                       className="h-11 px-4"
                     >
                       <Link
                         to={item.url}
                         aria-current={active ? "page" : undefined}
+                        aria-busy={pending || undefined}
                       >
-                        <item.icon />
+                        {pending ? (
+                          <LoaderCircle
+                            className="motion-safe:animate-spin"
+                            aria-hidden="true"
+                          />
+                        ) : (
+                          <item.icon aria-hidden="true" />
+                        )}
                         <span>{item.label}</span>
+                        {pending && (
+                          <span className="ml-auto text-xs text-muted-foreground">
+                            이동 중
+                          </span>
+                        )}
                       </Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
@@ -154,10 +189,21 @@ function DesktopSidebar({ csrf }: { csrf: string }) {
 export default function Shell() {
   const { csrf } = useLoaderData<typeof loader>();
   const location = useLocation();
+  const transition = useNavigation();
+  const loadingPath =
+    transition.state === "loading" && !transition.formMethod
+      ? transition.location.pathname
+      : null;
   return (
     <SidebarProvider>
       <DesktopSidebar csrf={csrf} />
-      <SidebarInset className="workspace-content min-w-0 bg-background">
+      <div role="status" className="sr-only">
+        {loadingPath ? "화면 이동 중" : ""}
+      </div>
+      <SidebarInset
+        aria-busy={!!loadingPath}
+        className="workspace-content min-w-0 bg-background"
+      >
         <Outlet />
       </SidebarInset>
       <nav
@@ -166,19 +212,29 @@ export default function Shell() {
       >
         {navigation.map((item) => {
           const active = isActive(location.pathname, item.url);
+          const pending = !!loadingPath && isActive(loadingPath, item.url);
+          const selected = loadingPath ? pending : active;
           return (
             <Link
               key={item.url}
               to={item.url}
               aria-current={active ? "page" : undefined}
-              className={`flex min-h-16 min-w-0 flex-col items-center justify-center gap-1 px-1 text-xs transition-colors focus-visible:outline-2 focus-visible:outline-ring ${active ? "font-semibold text-primary" : "text-muted-foreground hover:text-foreground"}`}
+              aria-busy={pending || undefined}
+              className={`flex min-h-16 min-w-0 flex-col items-center justify-center gap-1 px-1 text-xs transition-colors focus-visible:outline-2 focus-visible:outline-ring ${selected ? "font-semibold text-primary" : "text-muted-foreground hover:text-foreground"}`}
             >
               <span
-                className={`flex h-7 w-12 items-center justify-center rounded-full ${active ? "bg-primary/10" : ""}`}
+                className={`flex h-7 w-12 items-center justify-center rounded-full ${selected ? "bg-primary/10" : ""}`}
               >
-                <item.icon className="size-5" aria-hidden="true" />
+                {pending ? (
+                  <LoaderCircle
+                    className="size-5 motion-safe:animate-spin"
+                    aria-hidden="true"
+                  />
+                ) : (
+                  <item.icon className="size-5" aria-hidden="true" />
+                )}
               </span>
-              <span>{item.mobileLabel}</span>
+              <span>{pending ? "이동 중" : item.mobileLabel}</span>
             </Link>
           );
         })}

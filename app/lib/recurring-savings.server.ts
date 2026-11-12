@@ -1,4 +1,6 @@
-import { InputError, money, textValue } from "./domain.ts";
+import { InputError, money, textValue, today } from "./domain.ts";
+import type { Account } from "./domain.ts";
+import type { Transaction } from "./ledger.ts";
 import { ledgerStart } from "./ledger.ts";
 import { saveTransaction } from "./ledger.server.ts";
 import { savingsDueDate, type SavingsRule } from "./recurring-savings.ts";
@@ -22,11 +24,6 @@ export async function plannedSavings(
   rules: SavingsRule[],
   month: string,
 ) {
-  const effective = new Map<string, SavingsRule>();
-  for (const rule of rules) {
-    if (rule.effective_month <= month && !effective.has(rule.destination_id))
-      effective.set(rule.destination_id, rule);
-  }
   const confirmed = (
     await db
       .prepare(
@@ -40,11 +37,35 @@ export async function plannedSavings(
         account_id: string;
       }>()
   ).results;
+  return projectSavings(rules, month, confirmed);
+}
+
+export function projectSavings(
+  rules: SavingsRule[],
+  month: string,
+  confirmed: Pick<
+    Transaction,
+    "id" | "occurred_on" | "amount_krw" | "account_id"
+  >[],
+) {
+  const effective = new Map<string, SavingsRule>();
+  for (const rule of rules) {
+    if (rule.effective_month <= month && !effective.has(rule.destination_id))
+      effective.set(rule.destination_id, rule);
+  }
   return Array.from(effective.values()).flatMap((rule) => {
     const due = savingsDueDate(rule, month);
-    const transaction = confirmed.find(
+    const match = confirmed.find(
       (row) => row.id === savingsId(rule.destination_id, month),
     );
+    const transaction = match
+      ? {
+          id: match.id,
+          occurred_on: match.occurred_on,
+          amount_krw: match.amount_krw,
+          account_id: match.account_id,
+        }
+      : undefined;
     return transaction || !rule.ends_on || due <= rule.ends_on
       ? [{ rule, due, transaction }]
       : [];
@@ -132,4 +153,75 @@ export async function confirmSavings(
   transaction.set("account_id", plan.rule.account_id);
   transaction.set("destination_id", destination);
   await saveTransaction(db, transaction, savingsId(destination, month));
+}
+
+export async function manageSavingsRule(db: D1Database, form: FormData) {
+  const destination = textValue(form, "destination_id", true);
+  if (form.get("intent") === "delete-savings") {
+    const result = await db
+      .prepare(
+        `
+      DELETE FROM recurring_savings WHERE destination_id=?
+      AND NOT EXISTS (SELECT 1 FROM ledger_transactions WHERE id LIKE ?)
+    `,
+      )
+      .bind(destination, `saving:%:${destination}`)
+      .run();
+    if (!result.meta.changes)
+      throw new InputError(
+        "확정한 납입이 있거나 설정이 변경되었습니다. 확정 내역이 있는 규칙은 납입 중단을 사용해 주세요.",
+      );
+    return;
+  }
+  const month = textValue(form, "stop_month", true);
+  if (!monthPattern.test(month) || month < today().slice(0, 7))
+    throw new InputError("중단할 달을 확인해 주세요.");
+  const [year, number] = month.split("-").map(Number);
+  const end = new Date(Date.UTC(year, number - 1, 0))
+    .toISOString()
+    .slice(0, 10);
+  const result = await db
+    .prepare(
+      "UPDATE recurring_savings SET ends_on=? WHERE destination_id=? AND (ends_on IS NULL OR ends_on>?)",
+    )
+    .bind(end, destination, end)
+    .run();
+  if (!result.meta.changes)
+    throw new InputError("이미 해당 달 이전에 종료되었거나 설정이 없습니다.");
+}
+
+export async function savingsPageData(
+  db: D1Database,
+  month: string,
+  includeLedger = false,
+) {
+  const queries = [
+    db.prepare(
+      "SELECT * FROM accounts ORDER BY archived_at IS NOT NULL,created_at,id",
+    ),
+    db.prepare("SELECT * FROM recurring_savings ORDER BY effective_month DESC"),
+    db
+      .prepare(
+        "SELECT id,occurred_on,amount_krw,account_id FROM ledger_transactions WHERE id>=? AND id<?",
+      )
+      .bind(`saving:${month}:`, `saving:${month};`),
+  ];
+  if (includeLedger)
+    queries.push(
+      db
+        .prepare(
+          "SELECT * FROM ledger_transactions WHERE occurred_on>=? AND occurred_on<=? ORDER BY occurred_on DESC,created_at DESC,id",
+        )
+        .bind(`${month}-01`, `${month}-31`),
+    );
+  const results = await db.batch(queries);
+  const accounts = results[0].results as unknown as Account[];
+  const rules = results[1].results as unknown as SavingsRule[];
+  const confirmed = results[2].results as unknown as Transaction[];
+  return {
+    accounts,
+    rules,
+    plans: projectSavings(rules, month, confirmed),
+    rows: (results[3]?.results ?? []) as unknown as Transaction[],
+  };
 }

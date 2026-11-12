@@ -1,3 +1,5 @@
+import { cachedPage } from "~/lib/page-cache";
+import { PageHeader } from "~/components/page-header";
 export { shouldRevalidate } from "~/lib/revalidation";
 import { Link, useLoaderData } from "react-router";
 import {
@@ -13,24 +15,37 @@ import { Button } from "~/components/ui/button";
 import { Card, CardContent } from "~/components/ui/card";
 import { requireSession } from "~/lib/auth.server";
 import { balanceWon } from "~/lib/balance";
-import { snapshot } from "~/lib/db.server";
+import type { Account, Observation } from "~/lib/domain";
+import type { Transaction } from "~/lib/ledger";
+import type { SavingsRule } from "~/lib/recurring-savings";
 import { dashboard } from "~/lib/dashboard";
 import { today } from "~/lib/domain";
 import { bindings } from "~/lib/env.server";
 import { ledgerKinds } from "~/lib/ledger";
-import {
-  listSavingsRules,
-  plannedSavings,
-} from "~/lib/recurring-savings.server";
+import { projectSavings } from "~/lib/recurring-savings.server";
 
 export async function loader({ request }: Route.LoaderArgs) {
   await requireSession(request);
   const { DB } = bindings();
   const asOf = today();
-  const [data, rules] = await Promise.all([
-    snapshot(DB, asOf, "all"),
-    listSavingsRules(DB),
+  const result = await DB.batch([
+    DB.prepare("SELECT * FROM accounts ORDER BY created_at,id"),
+    DB.prepare("SELECT * FROM account_observations"),
+    DB.prepare("SELECT * FROM ledger_transactions WHERE occurred_on<=?").bind(
+      asOf,
+    ),
+    DB.prepare("SELECT * FROM recurring_savings ORDER BY effective_month DESC"),
   ]);
+  const rules = result[3].results as unknown as SavingsRule[];
+  const data = {
+    accounts: result[0].results as unknown as Account[],
+    observations: result[1].results as unknown as Observation[],
+    transactions: result[2].results as unknown as Transaction[],
+    products: [],
+    quantities: [],
+    asOf,
+    generatedAt: new Date().toISOString(),
+  };
   const summary = dashboard(data);
   const months = new Set([
     summary.month,
@@ -40,7 +55,7 @@ export async function loader({ request }: Route.LoaderArgs) {
   const plans = [];
   let cursor = first;
   while (cursor <= summary.month) {
-    const rows = await plannedSavings(DB, rules, cursor);
+    const rows = projectSavings(rules, cursor, data.transactions);
     plans.push(...rows.map((row) => ({ ...row, month: cursor })));
     const [year, month] = cursor.split("-").map(Number);
     cursor = new Date(Date.UTC(year, month, 1)).toISOString().slice(0, 7);
@@ -126,22 +141,21 @@ export default function Dashboard() {
   const hasNegative = accounts.some((row) => Number(row.value) < 0);
   return (
     <main className="page space-y-6">
-      <header className="flex items-start justify-between gap-3">
-        <div>
-          <p className="eyebrow mb-2">MY MONEY</p>
-          <h1 className="page-title">나의 자산 흐름</h1>
-          <p className="helper mt-2">{data.asOf} · 직접 기록한 내 돈의 현황</p>
-        </div>
-        <div className="flex gap-2">
-          <AccountSettings />
-          <Button variant="outline" asChild>
-            <Link to="/ledger">
-              <Plus aria-hidden="true" />
-              거래 입력
-            </Link>
-          </Button>
-        </div>
-      </header>
+      <PageHeader
+        title="나의 자산 흐름"
+        description={`${data.asOf} · 직접 기록한 내 돈의 현황`}
+        actions={
+          <>
+            <AccountSettings />
+            <Button variant="outline" asChild>
+              <Link to="/ledger">
+                <Plus aria-hidden="true" />
+                거래 입력
+              </Link>
+            </Button>
+          </>
+        }
+      />
 
       <Card>
         <CardContent className="space-y-5 p-5 sm:p-6">
@@ -462,4 +476,11 @@ export default function Dashboard() {
       </section>
     </main>
   );
+}
+
+export async function clientLoader({
+  request,
+  serverLoader,
+}: Route.ClientLoaderArgs) {
+  return cachedPage(request, serverLoader);
 }
