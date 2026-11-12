@@ -87,3 +87,5 @@ Cloudflare D1 Time Travel도 복구 수단으로 사용할 수 있으며 보존 
 ## 설계
 
 [1단계 설계](finance-phase-1-design.md)가 최신 결정이며 [초기 인수인계](finance-project-handoff.md)보다 우선합니다. 개인정보·원본 명세서·인증정보를 Git에 커밋하지 않습니다.
+
+카드 명세서의 후속 범위와 미결정 사항은 [카드 명세서 설계 초안](finance-card-statement-design.md)에 정리했습니다.
