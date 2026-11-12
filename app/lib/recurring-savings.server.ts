@@ -109,6 +109,21 @@ export async function confirmSavings(
       "반복 설정이 바뀌었습니다. 예정 납입을 다시 확인해 주세요.",
     );
 
+  const duplicate = await db
+    .prepare(
+      "SELECT occurred_on,amount_krw FROM ledger_transactions WHERE kind='transfer' AND account_id=? AND destination_id=? AND (substr(occurred_on,1,7)=? OR occurred_on=?) LIMIT 1",
+    )
+    .bind(
+      plan.rule.account_id,
+      destination,
+      month,
+      textValue(form, "occurred_on"),
+    )
+    .first<{ occurred_on: string; amount_krw: number }>();
+  if (duplicate)
+    throw new InputError(
+      `이미 같은 출금·입금 계좌의 이체가 있습니다. 가계부에서 기존 거래를 확인해 주세요. 중복 납입을 막기 위해 추가 등록을 중단했습니다.`,
+    );
   const transaction = new FormData();
   transaction.set("occurred_on", textValue(form, "occurred_on"));
   transaction.set("amount", textValue(form, "amount"));

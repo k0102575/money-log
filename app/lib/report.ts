@@ -172,7 +172,7 @@ export function makeMarkdown(snapshot: Snapshot) {
     "",
   );
   if (snapshot.transactions) {
-    const totals = ledgerSummary(snapshot.transactions);
+    const totals = ledgerSummary(snapshot.transactions, snapshot.accounts);
     lines.push(
       "",
       "## 월별 가계부 요약",

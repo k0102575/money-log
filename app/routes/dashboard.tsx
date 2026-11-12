@@ -32,13 +32,26 @@ export async function loader({ request }: Route.LoaderArgs) {
     listSavingsRules(DB),
   ]);
   const summary = dashboard(data);
-  const plans = await plannedSavings(DB, rules, summary.month);
+  const months = new Set([
+    summary.month,
+    ...rules.map((rule) => rule.effective_month),
+  ]);
+  const first = [...months].sort()[0];
+  const plans = [];
+  let cursor = first;
+  while (cursor <= summary.month) {
+    const rows = await plannedSavings(DB, rules, cursor);
+    plans.push(...rows.map((row) => ({ ...row, month: cursor })));
+    const [year, month] = cursor.split("-").map(Number);
+    cursor = new Date(Date.UTC(year, month, 1)).toISOString().slice(0, 7);
+  }
   return {
     ...summary,
     asOf,
     pending: plans
       .filter((plan) => !plan.transaction)
-      .map(({ rule, due }) => ({
+      .map(({ rule, due, month }) => ({
+        month,
         name: data.accounts.find(
           (account) => account.id === rule.destination_id,
         )?.alias,
@@ -385,18 +398,18 @@ export default function Dashboard() {
       <Card>
         <CardContent className="space-y-4 p-5 sm:p-6">
           <div className="flex items-center justify-between">
-            <h2 className="section-title">다가오는 납입</h2>
+            <h2 className="section-title">납입 확인</h2>
             <Link to="/recurring" className="text-xs text-primary">
               정기 납입 →
             </Link>
           </div>
           {data.pending.length === 0 && (
-            <p className="helper">이번 달에 미확정 납입이 없습니다.</p>
+            <p className="helper">미확정 납입이 없습니다.</p>
           )}
           {data.pending.map((row, index) => (
             <Link
               key={index}
-              to="/recurring"
+              to={`/recurring?month=${row.month}`}
               className="flex items-center justify-between gap-3 rounded-lg border p-3"
             >
               <div className="min-w-0">

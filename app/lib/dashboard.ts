@@ -5,7 +5,7 @@ import {
   type Account,
   type Snapshot,
 } from "./domain.ts";
-import { ledgerStart, ledgerSummary } from "./ledger.ts";
+import { contributionGroup, ledgerStart, ledgerSummary } from "./ledger.ts";
 
 function accountOrder(account: Account) {
   if (account.account_type === "checking") {
@@ -110,33 +110,15 @@ export function dashboard(data: Snapshot) {
       .slice(0, 7);
     if (value >= ledgerStart.slice(0, 7)) months.push(value);
   }
-  const fundGroups: Record<string, "saving" | "isa" | "pension"> = {
-    savings: "saving",
-    housing: "saving",
-    isa: "isa",
-    pension: "pension",
-    irp: "pension",
-  };
-  const accountGroups = new Map(
-    data.accounts.map((account) => [
-      account.id,
-      fundGroups[account.account_type],
-    ]),
-  );
   const contributions = transactions.filter(
     (row) =>
-      row.kind === "transfer" &&
-      (row.category === "saving" || row.category === "investment") &&
-      row.destination_id &&
-      accountGroups.get(row.destination_id) &&
-      !accountGroups.get(row.account_id) &&
-      row.occurred_on <= data.asOf,
+      contributionGroup(row, data.accounts) && row.occurred_on <= data.asOf,
   );
   const monthly = months.map((value) => {
     const sums = { saving: 0n, isa: 0n, pension: 0n };
     for (const row of contributions) {
       if (!row.occurred_on.startsWith(value)) continue;
-      const group = accountGroups.get(row.destination_id!);
+      const group = contributionGroup(row, data.accounts);
       if (group) sums[group] += BigInt(row.amount_krw);
     }
     return {

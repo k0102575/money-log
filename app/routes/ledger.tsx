@@ -206,7 +206,7 @@ export default function Ledger() {
   const data = useLoaderData<typeof loader>();
   const result = useActionData<typeof action>();
   const { month, accounts, rows, editing, requestKey } = data;
-  const totals = ledgerSummary(rows);
+  const totals = ledgerSummary(rows, accounts);
   const names = new Map(accounts.map((account) => [account.id, account.alias]));
   return (
     <main className="page space-y-6">

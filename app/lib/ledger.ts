@@ -1,3 +1,4 @@
+import type { Account } from "./domain.ts";
 export const ledgerStart = "2026-11-01";
 
 export const ledgerKinds = {
@@ -25,7 +26,27 @@ export interface Transaction {
   version: number;
 }
 
-export function ledgerSummary(rows: Transaction[]) {
+export function contributionGroup(row: Transaction, accounts: Account[]) {
+  const groups: Record<string, "saving" | "isa" | "pension"> = {
+    savings: "saving",
+    housing: "saving",
+    isa: "isa",
+    pension: "pension",
+    irp: "pension",
+  };
+  const source = accounts.find((account) => account.id === row.account_id);
+  const destination = accounts.find(
+    (account) => account.id === row.destination_id,
+  );
+  return row.kind === "transfer" &&
+    ["saving", "investment"].includes(row.category) &&
+    destination &&
+    !groups[source?.account_type ?? ""]
+    ? groups[destination.account_type]
+    : undefined;
+}
+
+export function ledgerSummary(rows: Transaction[], accounts?: Account[]) {
   const totals = {
     income: 0n,
     expense: 0n,
@@ -41,7 +62,15 @@ export function ledgerSummary(rows: Transaction[]) {
       row.kind === "transfer" &&
       (row.category === "saving" || row.category === "investment")
     ) {
-      totals[row.category] += amount;
+      const group = accounts ? contributionGroup(row, accounts) : null;
+      if (!accounts || group)
+        totals[
+          accounts
+            ? group === "saving"
+              ? "saving"
+              : "investment"
+            : row.category
+        ] += amount;
     }
   }
   return {

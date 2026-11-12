@@ -69,6 +69,26 @@ test("반복 납입은 적용 월과 만기를 지키고 실제 저축 이체를
     confirmSavings(db, confirmation, "2026-11"),
     confirmSavings(db, confirmation, "2026-11"),
   ]);
+  sql.exec(
+    "INSERT INTO ledger_transactions(id,occurred_on,kind,amount_krw,account_id,destination_id,category) VALUES ('manual','2026-11-01','transfer',100000,'hana','housing','saving')",
+  );
+  const housing = (await plans("2026-11")).find(
+    ({ rule }) => rule.destination_id === "housing",
+  )!;
+  await assert.rejects(
+    confirmSavings(
+      db,
+      fields({
+        destination_id: "housing",
+        rule: JSON.stringify(housing.rule),
+        occurred_on: "2026-11-01",
+        amount: "100000",
+      }),
+      "2026-11",
+    ),
+    /이미 같은/,
+  );
+  sql.exec("DELETE FROM ledger_transactions WHERE id='manual'");
   await saveSavingsRule(
     db,
     fields({ ...initial, effective_month: "2026-12", amount: "650,000" }),
