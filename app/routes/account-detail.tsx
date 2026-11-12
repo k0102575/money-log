@@ -329,7 +329,7 @@ export default function AccountDetail() {
   return (
     <main className="page">
       <Link
-        to="/"
+        to="/accounts"
         className="mb-6 flex items-center gap-2 text-xs text-muted-foreground"
       >
         <ArrowLeft className="size-3.5" />

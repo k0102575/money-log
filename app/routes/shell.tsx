@@ -22,6 +22,7 @@ import { Button } from "~/components/ui/button";
 import { ThemeToggle } from "~/components/theme";
 import {
   Wallet,
+  House,
   LayoutGrid,
   FileText,
   BookOpen,
@@ -34,7 +35,13 @@ export async function loader({ request }: Route.LoaderArgs) {
   return { csrf: s.csrf_token };
 }
 const navigation = [
-  { url: "/", label: "계좌 현황", mobileLabel: "계좌", icon: LayoutGrid },
+  { url: "/", label: "대시보드", mobileLabel: "홈", icon: House },
+  {
+    url: "/accounts",
+    label: "계좌 현황",
+    mobileLabel: "계좌",
+    icon: LayoutGrid,
+  },
   {
     url: "/ledger",
     label: "월별 가계부",
@@ -57,7 +64,7 @@ const navigation = [
 
 function isActive(pathname: string, url: string) {
   return url === "/"
-    ? pathname === "/" || /^\/accounts(?:\/|$)/.test(pathname)
+    ? pathname === "/"
     : pathname === url || pathname.startsWith(url + "/");
 }
 
@@ -155,7 +162,7 @@ export default function Shell() {
       </SidebarInset>
       <nav
         aria-label="주요 메뉴"
-        className="mobile-navigation fixed inset-x-0 bottom-0 z-30 grid grid-cols-4 border-t bg-card md:hidden"
+        className="mobile-navigation fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t bg-card md:hidden"
       >
         {navigation.map((item) => {
           const active = isActive(location.pathname, item.url);

@@ -8,7 +8,8 @@ export default [
   route("login", "routes/login.tsx"),
   route("logout", "routes/logout.tsx"),
   layout("routes/shell.tsx", [
-    index("routes/accounts.tsx"),
+    index("routes/dashboard.tsx"),
+    route("accounts", "routes/accounts.tsx"),
     route("accounts/new", "routes/account-new.tsx"),
     route("accounts/:accountId", "routes/account-detail.tsx"),
     route("ledger", "routes/ledger.tsx"),

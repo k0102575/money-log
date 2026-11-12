@@ -34,7 +34,7 @@ export default function NewAccount() {
   return (
     <main className="page max-w-3xl">
       <Link
-        to="/"
+        to="/accounts"
         className="mb-7 flex items-center gap-2 text-xs text-muted-foreground"
       >
         <ArrowLeft className="size-3.5" />

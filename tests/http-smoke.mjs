@@ -108,7 +108,7 @@ for (const [name, type] of entries) {
   });
   assert.equal(r.status, 302);
 }
-html = await (await get("/")).text();
+html = await (await get("/accounts")).text();
 for (const [name] of entries) assert.ok(html.includes(`${prefix}-${name}`));
 let reportHtml = await (await get("/reports")).text();
 const key = input(reportHtml, "request_key");
