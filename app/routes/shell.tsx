@@ -37,12 +37,6 @@ export async function loader({ request }: Route.LoaderArgs) {
 const navigation = [
   { url: "/", label: "대시보드", mobileLabel: "홈", icon: House },
   {
-    url: "/accounts",
-    label: "계좌 현황",
-    mobileLabel: "계좌",
-    icon: LayoutGrid,
-  },
-  {
     url: "/ledger",
     label: "월별 가계부",
     mobileLabel: "가계부",
@@ -53,6 +47,12 @@ const navigation = [
     label: "정기 납입",
     mobileLabel: "정기 납입",
     icon: CalendarClock,
+  },
+  {
+    url: "/accounts",
+    label: "계좌 현황",
+    mobileLabel: "계좌",
+    icon: LayoutGrid,
   },
   {
     url: "/reports",
