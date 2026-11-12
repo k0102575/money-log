@@ -5,7 +5,7 @@ import { Card, CardContent } from "~/components/ui/card";
 import { Input } from "~/components/ui/input";
 import { today, won } from "~/lib/domain";
 import { ledgerStart } from "~/lib/ledger";
-import type { loader } from "~/routes/ledger";
+import type { loader } from "~/routes/recurring";
 
 export function RecurringSavings({
   data: { accounts, month, plans, rules },

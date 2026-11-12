@@ -12,6 +12,7 @@ export default [
     route("accounts/new", "routes/account-new.tsx"),
     route("accounts/:accountId", "routes/account-detail.tsx"),
     route("ledger", "routes/ledger.tsx"),
+    route("recurring", "routes/recurring.tsx"),
     route("reports", "routes/reports.tsx"),
     route("reports/:reportId", "routes/report-detail.tsx"),
   ]),

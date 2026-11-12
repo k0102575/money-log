@@ -20,12 +20,9 @@ import { MoneyInput } from "~/components/money-input";
 import { Button } from "~/components/ui/button";
 import { Card, CardContent } from "~/components/ui/card";
 import { Input } from "~/components/ui/input";
-import { RecurringSavings } from "~/components/recurring-savings";
 import {
-  confirmSavings,
   listSavingsRules,
   plannedSavings,
-  saveSavingsRule,
 } from "~/lib/recurring-savings.server";
 import { actionFailure } from "~/lib/actions.server";
 import { mutation, requireSession } from "~/lib/auth.server";
@@ -66,8 +63,9 @@ export async function loader({ request }: Route.LoaderArgs) {
     accounts,
     rows,
     editing,
-    rules,
-    plans: await plannedSavings(DB, rules, month),
+    pendingSavings: (await plannedSavings(DB, rules, month)).filter(
+      (plan) => !plan.transaction,
+    ).length,
     requestKey: crypto.randomUUID(),
   };
 }
@@ -78,12 +76,6 @@ export async function action({ request }: Route.ActionArgs) {
     await mutation(request, form);
     const { DB } = bindings();
     const intent = form.get("intent");
-    if (intent === "save-savings" || intent === "confirm-savings") {
-      const month = ledgerMonth(String(form.get("month") ?? ""));
-      if (intent === "save-savings") await saveSavingsRule(DB, form);
-      else await confirmSavings(DB, form, month);
-      return redirect(`/ledger?month=${month}#planned-savings`);
-    }
     if (intent === "delete") {
       await deleteTransaction(DB, form);
       return redirect(
@@ -245,7 +237,15 @@ export default function Ledger() {
         </Button>
       </Form>
       <ActionError error={result?.error} />
-      <RecurringSavings data={data} />
+      {data.pendingSavings > 0 && (
+        <Link
+          to={`/recurring?month=${month}`}
+          className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-card px-4 py-3 text-sm"
+        >
+          <span>미확정 정기 납입 {data.pendingSavings}건</span>
+          <span className="font-medium text-primary">정기 납입 확인 →</span>
+        </Link>
+      )}
       <Card className="py-0 sm:py-6">
         <CardContent className="space-y-3 p-5">
           <h2 className="font-semibold">

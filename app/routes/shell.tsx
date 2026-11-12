@@ -34,6 +34,7 @@ import {
   LayoutGrid,
   FileText,
   BookOpen,
+  CalendarClock,
   LogOut,
   ShieldCheck,
 } from "lucide-react";
@@ -80,6 +81,11 @@ export default function Shell() {
                 {[
                   { url: "/", label: "계좌 현황", icon: LayoutGrid },
                   { url: "/ledger", label: "월별 가계부", icon: BookOpen },
+                  {
+                    url: "/recurring",
+                    label: "정기 납입",
+                    icon: CalendarClock,
+                  },
                   { url: "/reports", label: "MD 보고서", icon: FileText },
                 ].map((item) => {
                   const active =
