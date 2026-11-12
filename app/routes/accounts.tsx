@@ -14,6 +14,7 @@ import {
   today,
   won,
 } from "~/lib/domain";
+import { AccountSettings } from "~/components/account-settings";
 import { Button } from "~/components/ui/button";
 import { Card, CardContent } from "~/components/ui/card";
 import { Badge } from "~/components/ui/badge";
@@ -63,7 +64,8 @@ export default function Accounts() {
             흩어진 계좌와 보유 상품을 한곳에서 확인하세요.
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
+          <AccountSettings />
           <Button variant="outline" asChild>
             <Link to="/reports">
               <FileDown />

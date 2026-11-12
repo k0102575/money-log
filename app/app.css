@@ -259,19 +259,20 @@ body {
   padding-inline: env(safe-area-inset-left) env(safe-area-inset-right);
   padding-bottom: env(safe-area-inset-bottom);
 }
-body:not(:has(.workspace-header)) {
+body {
   padding-top: env(safe-area-inset-top);
 }
-.workspace-header {
-  height: calc(4rem + env(safe-area-inset-top));
-  padding-top: env(safe-area-inset-top);
+.mobile-navigation {
+  padding-bottom: env(safe-area-inset-bottom);
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+}
+.account-settings {
+  padding-bottom: env(safe-area-inset-bottom);
 }
 @media (max-width: 767px) {
-  .workspace-header {
-    position: sticky;
-    top: 0;
-    z-index: 20;
-    height: calc(3.5rem + env(safe-area-inset-top));
+  .workspace-content {
+    padding-bottom: calc(5rem + env(safe-area-inset-bottom));
   }
   .field input:is([type="date"], [type="month"]) {
     appearance: none;
@@ -282,6 +283,6 @@ body:not(:has(.workspace-header)) {
     min-inline-size: 0;
   }
   #transaction-form {
-    scroll-margin-top: calc(4rem + env(safe-area-inset-top));
+    scroll-margin-top: 1rem;
   }
 }
