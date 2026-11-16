@@ -1,3 +1,4 @@
+import { RefreshData } from "~/components/refresh-data";
 import { cachedPage } from "~/lib/page-cache";
 import { PageHeader } from "~/components/page-header";
 export { shouldRevalidate } from "~/lib/revalidation";
@@ -147,6 +148,7 @@ export default function Dashboard() {
         actions={
           <>
             <AccountSettings />
+            <RefreshData />
             <Button variant="outline" asChild>
               <Link to="/ledger">
                 <Plus aria-hidden="true" />
@@ -297,6 +299,17 @@ export default function Dashboard() {
         </CardContent>
       </Card>
 
+      <details className="rounded-xl border bg-card p-4">
+        <summary className="cursor-pointer font-medium">월말 점검</summary>
+        <div className="mt-4 grid gap-3 text-sm">
+          <Link to="/recurring">
+            ① 미확정 납입 확인 · {data.pending.length}건 →
+          </Link>
+          <Link to="/accounts">② CMA의 실제 잔액을 확인하고 차이 대조 →</Link>
+          <Link to="/ledger">③ 수입·지출·이체 누락 확인 →</Link>
+          <Link to="/reports">④ 월말 기준 MD 저장·다운로드 →</Link>
+        </div>
+      </details>
       <section className="space-y-3">
         <div className="flex items-center justify-between gap-2">
           <h2 className="section-title">

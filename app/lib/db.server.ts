@@ -485,7 +485,7 @@ export async function draftReport(
       );
     return existing.id;
   }
-  const data = await snapshot(db, asOf, true),
+  const data = await snapshot(db, asOf, "all"),
     reportId = id(),
     markdown = makeMarkdown(data);
   await db

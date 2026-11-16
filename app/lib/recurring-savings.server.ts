@@ -125,6 +125,28 @@ export async function confirmSavings(
   const plan = plans.find(({ rule }) => rule.destination_id === destination);
   if (!plan) throw new InputError("예정 납입을 다시 확인해 주세요.");
   if (plan.transaction) return;
+  const existingId = textValue(form, "existing_transaction_id");
+  if (existingId) {
+    const linked = await db
+      .prepare(
+        "UPDATE ledger_transactions SET id=?, category='saving',version=version+1 WHERE id=? AND version=? AND kind='transfer' AND account_id=? AND destination_id=? AND substr(occurred_on,1,7)=? AND id NOT LIKE 'saving:%' AND NOT EXISTS (SELECT 1 FROM ledger_transactions WHERE id=?)",
+      )
+      .bind(
+        savingsId(destination, month),
+        existingId,
+        Number(textValue(form, "existing_version")),
+        plan.rule.account_id,
+        destination,
+        month,
+        savingsId(destination, month),
+      )
+      .run();
+    if (!linked.meta.changes)
+      throw new InputError(
+        "거래가 변경되었습니다. 새로고침 후 다시 선택해 주세요.",
+      );
+    return;
+  }
   if (JSON.stringify(plan.rule) !== form.get("rule"))
     throw new InputError(
       "반복 설정이 바뀌었습니다. 예정 납입을 다시 확인해 주세요.",

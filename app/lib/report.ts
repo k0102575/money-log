@@ -1,3 +1,4 @@
+import { dashboard } from "./dashboard.ts";
 import { ledgerSummary } from "./ledger.ts";
 import {
   accountTypes,
@@ -172,13 +173,16 @@ export function makeMarkdown(snapshot: Snapshot) {
     "",
   );
   if (snapshot.transactions) {
-    const totals = ledgerSummary(snapshot.transactions, snapshot.accounts);
+    const monthly = snapshot.transactions.filter((row) =>
+      row.occurred_on.startsWith(asOf.slice(0, 7)),
+    );
+    const totals = ledgerSummary(monthly, snapshot.accounts);
     lines.push(
       "",
       "## 월별 가계부 요약",
       "",
       `- 집계 기간: ${asOf.slice(0, 7)}-01 ~ ${asOf}`,
-      `- 입력한 거래: ${snapshot.transactions.length}건`,
+      `- 입력한 거래: ${monthly.length}건`,
       "- 입력한 거래만 집계합니다. 계좌 잔액은 금융기관에서 확인한 기록입니다.",
       "",
       "| 항목 | 금액 |",
@@ -197,5 +201,21 @@ export function makeMarkdown(snapshot: Snapshot) {
     }
     lines.push("");
   }
+  const state = dashboard(snapshot);
+  lines.push(
+    "",
+    "## 기록 기준 계산 현황",
+    "",
+    "확인 잔액과 이후 입력 거래로 계산하며, 투자 금액은 순납입 원금입니다.",
+    "",
+  );
+  for (const row of state.balances)
+    lines.push(
+      `- ${mdCell(row.name)} 계산 잔액: ${row.calculated === null ? "미확인" : BigInt(row.calculated).toLocaleString("ko-KR") + "원"}`,
+    );
+  for (const row of state.investments)
+    lines.push(
+      `- ${mdCell(row.name)} 현재 순납입: ${row.amount === null ? "미확인" : BigInt(row.amount).toLocaleString("ko-KR") + "원"}`,
+    );
   return lines.join("\n");
 }

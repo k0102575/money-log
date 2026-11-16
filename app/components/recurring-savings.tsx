@@ -25,7 +25,7 @@ import { ledgerStart } from "~/lib/ledger";
 import type { loader } from "~/routes/recurring";
 
 export function RecurringSavings({
-  data: { accounts, month, plans, rules },
+  data: { accounts, month, plans, rules, rows },
 }: {
   data: Awaited<ReturnType<typeof loader>>;
 }) {
@@ -141,6 +141,52 @@ export function RecurringSavings({
                     출금 · 매월 {rule.payment_day}일
                   </p>
                 </div>
+                {plan &&
+                  !transaction &&
+                  rows
+                    .filter(
+                      (row) =>
+                        row.kind === "transfer" &&
+                        row.account_id === rule.account_id &&
+                        row.destination_id === rule.destination_id &&
+                        !row.id.startsWith("saving:"),
+                    )
+                    .map((row) => (
+                      <Form
+                        key={row.id}
+                        method="post"
+                        className="rounded-lg border border-primary/30 bg-primary/5 p-3"
+                      >
+                        <Csrf />
+                        <input
+                          type="hidden"
+                          name="intent"
+                          value="confirm-savings"
+                        />
+                        <input type="hidden" name="month" value={month} />
+                        <input
+                          type="hidden"
+                          name="destination_id"
+                          value={rule.destination_id}
+                        />
+                        <input
+                          type="hidden"
+                          name="existing_transaction_id"
+                          value={row.id}
+                        />
+                        <input
+                          type="hidden"
+                          name="existing_version"
+                          value={row.version}
+                        />
+                        <p className="helper mb-2">
+                          기존 이체 · {row.occurred_on} · {won(row.amount_krw)}
+                        </p>
+                        <Submit variant="outline">
+                          이 거래를 납입으로 연결
+                        </Submit>
+                      </Form>
+                    ))}
                 <div className="flex gap-2 border-t pt-4">
                   {plan && !transaction && (
                     <Button

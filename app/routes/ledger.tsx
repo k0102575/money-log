@@ -1,8 +1,18 @@
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription,
+} from "~/components/ui/sheet";
+import { RefreshData } from "~/components/refresh-data";
+import { snapshot } from "~/lib/db.server";
+import { dashboard } from "~/lib/dashboard";
 import { uncachedAction } from "~/lib/page-cache";
 import { cachedPage } from "~/lib/page-cache";
 import { PageHeader } from "~/components/page-header";
 export { shouldRevalidate } from "~/lib/revalidation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Form,
   Link,
@@ -10,6 +20,7 @@ import {
   useActionData,
   useLoaderData,
   useSearchParams,
+  useNavigate,
 } from "react-router";
 import type { Route } from "./+types/ledger";
 import {
@@ -69,7 +80,26 @@ export async function action({ request }: Route.ActionArgs) {
         `/ledger?month=${ledgerMonth(String(form.get("month") ?? ""))}`,
       );
     }
-    return redirect(`/ledger?month=${await saveTransaction(DB, form)}`);
+    const before = dashboard(await snapshot(DB, today(), "all"));
+    await saveTransaction(DB, form);
+    const after = dashboard(await snapshot(DB, today(), "all"));
+    const previous = new Map([
+      ...before.balances.map((row) => [row.id, row.calculated] as const),
+      ...before.investments.map((row) => [row.id, row.amount] as const),
+    ]);
+    const current = [
+      ...after.balances.map((row) => ({ ...row, value: row.calculated })),
+      ...after.investments.map((row) => ({ ...row, value: row.amount })),
+    ];
+    const format = (value: string | null | undefined) =>
+      value == null ? "미확인" : BigInt(value).toLocaleString("ko-KR") + "원";
+    const changes = current
+      .filter((row) => previous.get(row.id) !== row.value)
+      .map(
+        (row) =>
+          `${row.name}: ${format(previous.get(row.id))} → ${format(row.value)}`,
+      );
+    return { success: "거래를 저장했습니다. " + changes.join(" · ") };
   } catch (error) {
     return actionFailure(error);
   }
@@ -78,19 +108,23 @@ export async function action({ request }: Route.ActionArgs) {
 function TransactionForm({
   data,
 }: {
-  data: Awaited<ReturnType<typeof loader>> & { editing?: Transaction };
+  data: Awaited<ReturnType<typeof loader>> & {
+    editing?: Transaction;
+    preset?: Partial<Transaction>;
+  };
 }) {
   const { accounts, editing, month, requestKey } = data;
+  const values = editing ?? data.preset;
   const [kind, setKind] = useState<Transaction["kind"]>(
-    editing?.kind ?? "expense",
+    values?.kind ?? "expense",
   );
   const options = Object.fromEntries(
     accounts
       .filter(
         (account) =>
           !account.archived_at ||
-          account.id === editing?.account_id ||
-          account.id === editing?.destination_id,
+          account.id === values?.account_id ||
+          account.id === values?.destination_id,
       )
       .map((account) => [account.id, account.alias]),
   );
@@ -113,7 +147,7 @@ function TransactionForm({
             min={ledgerStart}
             max={today()}
             defaultValue={
-              editing?.occurred_on ??
+              values?.occurred_on ??
               (today().startsWith(month) ? today() : `${month}-01`)
             }
           />
@@ -132,7 +166,7 @@ function TransactionForm({
           <Select
             name="account_id"
             required
-            defaultValue={editing?.account_id ?? ""}
+            defaultValue={values?.account_id ?? ""}
             options={{ "": "계좌 선택", ...options }}
           />
         </Field>
@@ -140,7 +174,7 @@ function TransactionForm({
           <MoneyInput
             name="amount"
             required
-            defaultValue={editing?.amount_krw}
+            defaultValue={values?.amount_krw}
           />
         </Field>
         {kind === "transfer" ? (
@@ -149,7 +183,7 @@ function TransactionForm({
               <Select
                 name="destination_id"
                 required
-                defaultValue={editing?.destination_id ?? ""}
+                defaultValue={values?.destination_id ?? ""}
                 options={{ "": "계좌 선택", ...options }}
               />
             </Field>
@@ -158,7 +192,7 @@ function TransactionForm({
                 name="transfer_category"
                 options={transferCategories}
                 defaultValue={
-                  editing?.kind === "transfer" ? editing.category : "general"
+                  values?.kind === "transfer" ? values.category : "general"
                 }
               />
             </Field>
@@ -169,14 +203,12 @@ function TransactionForm({
               name="category"
               maxLength={40}
               placeholder="예: 급여, 식비, 온누리 충전"
-              defaultValue={
-                editing?.kind !== "transfer" ? editing?.category : ""
-              }
+              defaultValue={values?.kind !== "transfer" ? values?.category : ""}
             />
           </Field>
         )}
         <Field label="메모 (선택)">
-          <Input name="note" maxLength={300} defaultValue={editing?.note} />
+          <Input name="note" maxLength={300} defaultValue={values?.note} />
         </Field>
       </div>
       <Submit>{editing ? "거래 수정 저장" : "거래 추가"}</Submit>
@@ -190,21 +222,61 @@ function TransactionForm({
 }
 
 export default function Ledger() {
+  const [notice, setNotice] = useState("");
+  const [open, setOpen] = useState(false);
+  const [preset, setPreset] = useState<Partial<Transaction>>();
+  const [accountFilter, setAccountFilter] = useState("");
+  const [kindFilter, setKindFilter] = useState("");
+  const navigate = useNavigate();
   const loaded = useLoaderData<typeof loader>();
   const [query] = useSearchParams();
   const data = {
+    preset,
     ...loaded,
     editing: loaded.rows.find((row) => row.id === query.get("edit")),
   };
   const result = useActionData<typeof action>();
   const { month, accounts, rows, editing, requestKey } = data;
+  useEffect(() => {
+    if (result && "success" in result) {
+      setNotice(result.success);
+      setOpen(false);
+      navigate("/ledger?month=" + month, { replace: true });
+    }
+  }, [result]);
+  const visible = rows.filter(
+    (row) =>
+      (!accountFilter ||
+        row.account_id === accountFilter ||
+        row.destination_id === accountFilter) &&
+      (!kindFilter || row.kind === kindFilter),
+  );
   const totals = ledgerSummary(rows, accounts);
+  const shiftMonth = (offset: number) => {
+    const [year, number] = month.split("-").map(Number);
+    return new Date(Date.UTC(year, number - 1 + offset, 1))
+      .toISOString()
+      .slice(0, 7);
+  };
   const names = new Map(accounts.map((account) => [account.id, account.alias]));
   return (
     <main className="page space-y-6">
       <PageHeader
         title="월별 가계부"
         description="실제로 돈이 오간 날짜로 거래를 입력하고 월별 내역을 확인하세요."
+        actions={
+          <>
+            <RefreshData />
+            <Button
+              onClick={() => {
+                setPreset(undefined);
+                setOpen(true);
+              }}
+            >
+              거래 추가
+            </Button>
+          </>
+        }
       />
       <Form
         method="get"
@@ -225,7 +297,43 @@ export default function Ledger() {
           조회
         </Button>
       </Form>
-      <ActionError error={result?.error} />
+      <ActionError
+        error={result && "error" in result ? result.error : undefined}
+      />
+      {notice && (
+        <p role="status" className="callout">
+          {notice}
+        </p>
+      )}
+      <div className="flex flex-wrap gap-2">
+        <Button
+          variant="outline"
+          disabled={shiftMonth(-1) < ledgerStart.slice(0, 7)}
+          onClick={() => navigate("/ledger?month=" + shiftMonth(-1))}
+        >
+          이전 달
+        </Button>
+        <Button variant="outline" onClick={() => navigate("/ledger")}>
+          이번 달
+        </Button>
+        <Button
+          variant="outline"
+          disabled={shiftMonth(1) > today().slice(0, 7)}
+          onClick={() => navigate("/ledger?month=" + shiftMonth(1))}
+        >
+          다음 달
+        </Button>
+        <Button variant="ghost" asChild>
+          <a href={`/transactions.csv?month=${month}`} download>
+            이 달 CSV
+          </a>
+        </Button>
+        <Button variant="ghost" asChild>
+          <a href="/transactions.csv" download>
+            전체 CSV
+          </a>
+        </Button>
+      </div>
       {data.pendingSavings > 0 && (
         <Link
           to={`/recurring?month=${month}`}
@@ -269,36 +377,150 @@ export default function Ledger() {
           </p>
         </CardContent>
       </Card>
-      <Card className="py-0 sm:py-6">
-        <CardContent
-          id="transaction-form"
-          className="scroll-mt-4 space-y-4 p-4 sm:p-5"
-        >
-          <h2 className="font-semibold">
-            {editing ? "거래 수정" : "거래 입력"}
-          </h2>
-          <p className="helper">
-            온누리는 실제 충전 출금액만 지출로 입력하세요. 카드 지출을
-            결제액으로 기록하면 개별 사용액은 같은 집계에 다시 넣지 않습니다.
-          </p>
-          {editing || accounts.some((account) => !account.archived_at) ? (
-            <TransactionForm
-              key={editing ? `${editing.id}:${editing.version}` : requestKey}
-              data={data}
-            />
-          ) : (
-            <Link to="/accounts/new" className="underline">
-              거래에 사용할 계좌 등록하기
-            </Link>
-          )}
-        </CardContent>
-      </Card>
+      <details className="rounded-xl border p-4">
+        <summary className="cursor-pointer text-sm font-medium">
+          자주 쓰는 거래
+        </summary>
+        <div className="mt-3 flex flex-wrap gap-2">
+          {[
+            {
+              kind: "transfer",
+              category: "general",
+              note: "CMA → 하나",
+              account_id: accounts.find((a) => a.account_type === "cma")?.id,
+              destination_id: accounts.find(
+                (a) =>
+                  a.institution.includes("하나") &&
+                  a.account_type === "checking",
+              )?.id,
+            },
+            {
+              kind: "transfer",
+              category: "general",
+              note: "CMA → 신한",
+              account_id: accounts.find((a) => a.account_type === "cma")?.id,
+              destination_id: accounts.find(
+                (a) =>
+                  a.institution.includes("신한") &&
+                  a.account_type === "checking",
+              )?.id,
+            },
+            { kind: "expense", category: "온누리 충전" },
+            { kind: "expense", category: "카드대금" },
+          ].map((item, index) => (
+            <Button
+              key={index}
+              variant="outline"
+              onClick={() => {
+                setPreset(item as Partial<Transaction>);
+                setOpen(true);
+              }}
+            >
+              {item.note ?? item.category}
+            </Button>
+          ))}
+          {rows
+            .filter(
+              (row, index, all) =>
+                all.findIndex(
+                  (other) =>
+                    other.account_id === row.account_id &&
+                    other.destination_id === row.destination_id &&
+                    other.category === row.category,
+                ) === index,
+            )
+            .slice(0, 5)
+            .map((row) => (
+              <Button
+                key={row.id}
+                variant="outline"
+                onClick={() => {
+                  setPreset({
+                    ...row,
+                    amount_krw: undefined,
+                    occurred_on: undefined,
+                  });
+                  setOpen(true);
+                }}
+              >
+                {names.get(row.account_id)} ·{" "}
+                {row.kind === "transfer"
+                  ? names.get(row.destination_id ?? "")
+                  : row.category || ledgerKinds[row.kind]}
+              </Button>
+            ))}
+        </div>
+      </details>
+      <Sheet
+        open={open || !!editing}
+        onOpenChange={(value) => {
+          setOpen(value);
+          if (!value && editing) navigate("/ledger?month=" + month);
+        }}
+      >
+        <SheetContent className="w-full overflow-y-auto sm:max-w-xl">
+          <SheetHeader>
+            <SheetTitle>{editing ? "거래 수정" : "거래 추가"}</SheetTitle>
+            <SheetDescription>
+              실제 거래일과 금액을 입력하세요.
+            </SheetDescription>
+          </SheetHeader>
+          <ActionError
+            error={result && "error" in result ? result.error : undefined}
+          />
+          <CardContent
+            id="transaction-form"
+            className="scroll-mt-4 space-y-4 p-4 sm:p-5"
+          >
+            <h2 className="font-semibold">
+              {editing ? "거래 수정" : "거래 입력"}
+            </h2>
+            <p className="helper">
+              온누리는 실제 충전 출금액만 지출로 입력하세요. 카드 지출을
+              결제액으로 기록하면 개별 사용액은 같은 집계에 다시 넣지 않습니다.
+            </p>
+            {editing || accounts.some((account) => !account.archived_at) ? (
+              <TransactionForm
+                key={
+                  editing
+                    ? `${editing.id}:${editing.version}`
+                    : requestKey + JSON.stringify(preset)
+                }
+                data={data}
+              />
+            ) : (
+              <Link to="/accounts/new" className="underline">
+                거래에 사용할 계좌 등록하기
+              </Link>
+            )}
+          </CardContent>
+        </SheetContent>
+      </Sheet>
       <section className="space-y-3">
-        <h2 className="section-title">거래 내역</h2>
+        <h2 className="section-title">거래 내역 · {visible.length}건</h2>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field label="계좌">
+            <Select
+              value={accountFilter}
+              onChange={(e) => setAccountFilter(e.target.value)}
+              options={{
+                "": "모든 계좌",
+                ...Object.fromEntries(accounts.map((a) => [a.id, a.alias])),
+              }}
+            />
+          </Field>
+          <Field label="거래 종류">
+            <Select
+              value={kindFilter}
+              onChange={(e) => setKindFilter(e.target.value)}
+              options={{ "": "모든 종류", ...ledgerKinds }}
+            />
+          </Field>
+        </div>
         {rows.length === 0 && (
           <p className="helper">이 달에 입력한 거래가 없습니다.</p>
         )}
-        {rows.map((row) => (
+        {visible.map((row) => (
           <div key={row.id} className="rounded-lg border bg-card p-4">
             <div className="flex flex-wrap justify-between gap-2">
               <span className="font-medium">

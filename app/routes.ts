@@ -17,5 +17,6 @@ export default [
     route("reports", "routes/reports.tsx"),
     route("reports/:reportId", "routes/report-detail.tsx"),
   ]),
+  route("transactions.csv", "routes/transactions-csv.ts"),
   route("reports/:reportId/download", "routes/download.ts"),
 ] satisfies RouteConfig;

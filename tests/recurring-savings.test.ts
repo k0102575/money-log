@@ -91,6 +91,31 @@ test("반복 납입은 적용 월과 만기를 지키고 실제 저축 이체를
     ),
     /이미 같은/,
   );
+  const totalBeforeLink = sql
+    .prepare("SELECT SUM(amount_krw) AS total FROM ledger_transactions")
+    .get()?.total;
+  await confirmSavings(
+    db,
+    fields({
+      destination_id: "housing",
+      existing_transaction_id: "manual",
+      existing_version: "1",
+    }),
+    "2026-11",
+  );
+  assert.equal(
+    sql
+      .prepare("SELECT SUM(amount_krw) AS total FROM ledger_transactions")
+      .get()?.total,
+    totalBeforeLink,
+  );
+  assert.equal(
+    (await plans("2026-11")).find(
+      (plan) => plan.rule.destination_id === "housing",
+    )?.transaction?.amount_krw,
+    100000,
+  );
+  sql.exec("DELETE FROM ledger_transactions WHERE id='saving:2026-11:housing'");
   sql.exec("DELETE FROM ledger_transactions WHERE id='manual'");
   await saveSavingsRule(
     db,

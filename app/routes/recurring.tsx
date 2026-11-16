@@ -31,8 +31,12 @@ export async function loader({ request }: Route.LoaderArgs) {
   await requireSession(request);
   const month = ledgerMonth(new URL(request.url).searchParams.get("month"));
   const { DB } = bindings();
-  const { accounts, rules, plans } = await savingsPageData(DB, month);
-  return { accounts, rules, month, plans };
+  const { accounts, rules, plans, rows } = await savingsPageData(
+    DB,
+    month,
+    true,
+  );
+  return { accounts, rules, month, plans, rows };
 }
 
 export async function action({ request }: Route.ActionArgs) {

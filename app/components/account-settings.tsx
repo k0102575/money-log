@@ -34,6 +34,7 @@ export function AccountSettings() {
           </SheetDescription>
         </SheetHeader>
         <div className="space-y-6 px-4 pb-6">
+          <p className="helper">Money Log · v1.0.0</p>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <span className="text-sm font-medium">화면 테마</span>
             <ThemeToggle />

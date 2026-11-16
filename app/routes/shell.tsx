@@ -181,6 +181,7 @@ function DesktopSidebar({ csrf }: { csrf: string }) {
             </Button>
           </Form>
         </div>
+        <p className="text-xs text-muted-foreground">Money Log · v1.0.0</p>
       </SidebarFooter>
     </Sidebar>
   );
