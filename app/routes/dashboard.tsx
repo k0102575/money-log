@@ -59,7 +59,12 @@ export async function loader({ request }: Route.LoaderArgs) {
   const plans = [];
   let cursor = first;
   while (cursor <= summary.month) {
-    const rows = projectSavings(rules, cursor, data.transactions);
+    const rows = projectSavings(
+      rules,
+      cursor,
+      data.transactions,
+      data.accounts,
+    );
     plans.push(...rows.map((row) => ({ ...row, month: cursor })));
     const [year, month] = cursor.split("-").map(Number);
     cursor = new Date(Date.UTC(year, month, 1)).toISOString().slice(0, 7);
@@ -68,8 +73,13 @@ export async function loader({ request }: Route.LoaderArgs) {
     ...summary,
     asOf,
     lastUpdatedAt: lastUpdate?.updated_at ?? null,
+    blockedSavings: new Set(
+      plans
+        .filter((plan) => plan.blocked)
+        .map((plan) => plan.rule.destination_id),
+    ).size,
     pending: plans
-      .filter((plan) => !plan.transaction)
+      .filter((plan) => !plan.transaction && !plan.blocked)
       .map(({ rule, due, month }) => ({
         month,
         name: data.accounts.find(
@@ -454,6 +464,11 @@ export default function Dashboard() {
               정기 납입 →
             </Link>
           </div>
+          {data.blockedSavings > 0 && (
+            <Link className="block text-sm text-primary" to="/recurring">
+              계좌 변경 필요 · {data.blockedSavings}건 →
+            </Link>
+          )}
           {data.pending.length === 0 && (
             <p className="helper">미확정 납입이 없습니다.</p>
           )}

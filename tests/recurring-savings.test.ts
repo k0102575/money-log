@@ -211,3 +211,135 @@ test("반복 납입은 적용 월과 만기를 지키고 실제 저축 이체를
     false,
   );
 });
+
+test("CMA 충당과 정기 납입을 함께 한 번만 저장한다", async (t) => {
+  const { db, sql, close } = testDb();
+  t.after(close);
+  sql.exec(`
+    INSERT INTO accounts(id,alias,institution,account_type,tracking_start_date,created_at,updated_at)
+    VALUES ('cma','CMA','','cma','2026-11-01','',''),
+           ('hana','하나','','checking','2026-11-01','',''),
+           ('saving','적금','','savings','2026-11-01','','')
+  `);
+  await saveSavingsRule(
+    db,
+    fields({
+      account_id: "hana",
+      destination_id: "saving",
+      effective_month: "2026-11",
+      payment_day: "26",
+      amount: "700,000",
+    }),
+  );
+  const rules = await listSavingsRules(db);
+  const values = {
+    destination_id: "saving",
+    rule: JSON.stringify(rules[0]),
+    occurred_on: "2026-11-03",
+    amount: "700,000",
+    funding_account_id: "cma",
+    funding_date: "2026-11-02",
+    funding_amount: "800,000",
+  };
+  const confirm = (data: typeof values) =>
+    confirmSavings(db, fields(data), "2026-11");
+  const count = () =>
+    sql.prepare("SELECT COUNT(*) AS count FROM ledger_transactions").get()
+      ?.count;
+
+  await assert.rejects(
+    confirm({ ...values, funding_date: "2026-11-04" }),
+    /이전/,
+  );
+  assert.equal(count(), 0);
+
+  sql.exec(
+    "INSERT INTO ledger_transactions(id,occurred_on,kind,amount_krw,account_id,destination_id,category) VALUES ('manual-funding','2026-11-02','transfer',800000,'cma','hana','general')",
+  );
+  await assert.rejects(confirm(values), /이미 기록/);
+  assert.equal(count(), 1);
+  sql.exec("DELETE FROM ledger_transactions WHERE id='manual-funding'");
+
+  await Promise.all([confirm(values), confirm(values)]);
+  assert.deepEqual(
+    sql
+      .prepare(
+        "SELECT occurred_on,amount_krw,account_id,destination_id,category FROM ledger_transactions ORDER BY occurred_on",
+      )
+      .all()
+      .map((row) => ({ ...row })),
+    [
+      {
+        occurred_on: "2026-11-02",
+        amount_krw: 800000,
+        account_id: "cma",
+        destination_id: "hana",
+        category: "general",
+      },
+      {
+        occurred_on: "2026-11-03",
+        amount_krw: 700000,
+        account_id: "hana",
+        destination_id: "saving",
+        category: "saving",
+      },
+    ],
+  );
+  assert.ok((await plannedSavings(db, rules, "2026-11"))[0].transaction);
+});
+
+test("이달에 출금된 전월 납입은 이달 납입을 막지 않고 보관 계좌는 따로 표시한다", async (t) => {
+  t.mock.timers.enable({
+    apis: ["Date"],
+    now: new Date("2026-12-27T03:00:00Z"),
+  });
+  const { db, sql, close } = testDb();
+  t.after(close);
+  sql.exec(`
+    INSERT INTO accounts(id,alias,institution,account_type,tracking_start_date,created_at,updated_at)
+    VALUES ('hana','하나','','checking','2026-11-01','',''),('saving','적금','','savings','2026-11-01','','');
+    INSERT INTO ledger_transactions(id,occurred_on,kind,amount_krw,account_id,destination_id,category)
+    VALUES ('late','2026-12-01','transfer',700000,'hana','saving','saving')
+  `);
+  await saveSavingsRule(
+    db,
+    fields({
+      account_id: "hana",
+      destination_id: "saving",
+      effective_month: "2026-11",
+      payment_day: "26",
+      amount: "700,000",
+    }),
+  );
+  const november = await savingsPageData(db, "2026-11", "link-candidates");
+  assert.equal(november.rows[0].id, "late");
+  await confirmSavings(
+    db,
+    fields({
+      destination_id: "saving",
+      existing_transaction_id: "late",
+      existing_version: "1",
+    }),
+    "2026-11",
+  );
+  await confirmSavings(
+    db,
+    fields({
+      destination_id: "saving",
+      rule: JSON.stringify(november.rules[0]),
+      occurred_on: "2026-12-26",
+      amount: "700000",
+    }),
+    "2026-12",
+  );
+  assert.deepEqual(
+    sql
+      .prepare("SELECT id FROM ledger_transactions ORDER BY id")
+      .all()
+      .map((row) => row.id),
+    ["saving:2026-11:saving", "saving:2026-12:saving"],
+  );
+  sql.exec("UPDATE accounts SET archived_at='2026-12-27' WHERE id='hana'");
+  assert.equal((await savingsPageData(db, "2026-12")).plans[0].blocked, false);
+  assert.equal((await savingsPageData(db, "2027-01")).plans[0].blocked, true);
+});

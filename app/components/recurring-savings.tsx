@@ -24,6 +24,58 @@ import { today, won } from "~/lib/domain";
 import { ledgerStart } from "~/lib/ledger";
 import type { loader } from "~/routes/recurring";
 
+function CmaFundingFields({ options }: { options: Record<string, string> }) {
+  const [enabled, setEnabled] = useState(false);
+  const firstAccount = Object.keys(options)[0];
+  if (!firstAccount) return null;
+  return (
+    <div className="space-y-3 rounded-lg border p-3">
+      <label className="flex items-center gap-2 text-sm font-medium">
+        <input
+          type="checkbox"
+          checked={enabled}
+          onChange={(event) => setEnabled(event.target.checked)}
+        />
+        CMA에서 충당한 이체도 함께 기록
+      </label>
+      {enabled && (
+        <div className="space-y-3">
+          <Field label="CMA 계좌">
+            <Select
+              name="funding_account_id"
+              options={options}
+              defaultValue={firstAccount}
+              required
+            />
+          </Field>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field
+              label="CMA 이체일 (선택)"
+              hint="비우면 납입일과 같은 날짜로 기록합니다."
+            >
+              <Input
+                type="date"
+                name="funding_date"
+                min={ledgerStart}
+                max={today()}
+              />
+            </Field>
+            <Field
+              label="CMA 이체액 (선택)"
+              hint="비우면 실제 납입액을 사용합니다."
+            >
+              <MoneyInput name="funding_amount" />
+            </Field>
+          </div>
+          <p className="helper">
+            이미 가계부에 기록한 CMA 이체는 체크를 해제해 주세요.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function RecurringSavings({
   data: { accounts, month, plans, rules, rows },
 }: {
@@ -101,11 +153,13 @@ export function RecurringSavings({
           const due = plan?.due;
           const status = transaction
             ? "납입 완료"
-            : plan
-              ? "납입 예정"
-              : latestRule.effective_month > month
-                ? "시작 전"
-                : "납입 없음";
+            : plan?.blocked
+              ? "계좌 변경 필요"
+              : plan
+                ? "납입 예정"
+                : latestRule.effective_month > month
+                  ? "시작 전"
+                  : "납입 없음";
           return (
             <Card key={rule.destination_id} className="py-0">
               <CardContent className="space-y-5 p-5">
@@ -141,7 +195,14 @@ export function RecurringSavings({
                     출금 · 매월 {rule.payment_day}일
                   </p>
                 </div>
+                {plan?.blocked && (
+                  <p className="helper">
+                    출금 또는 입금 계좌가 보관됐어요. 계좌를 복원하거나 관리에서
+                    납입 설정을 확인해 주세요.
+                  </p>
+                )}
                 {plan &&
+                  !plan.blocked &&
                   !transaction &&
                   rows
                     .filter(
@@ -188,7 +249,7 @@ export function RecurringSavings({
                       </Form>
                     ))}
                 <div className="flex gap-2 border-t pt-4">
-                  {plan && !transaction && (
+                  {plan && !plan.blocked && !transaction && (
                     <Button
                       className="flex-1"
                       onClick={() =>
@@ -222,53 +283,67 @@ export function RecurringSavings({
                     관리
                   </Button>
                 </div>
-                {plan && !transaction && confirmId === rule.destination_id && (
-                  <div className="rounded-lg bg-muted/40 p-3">
-                    <p className="text-sm font-medium">실제 출금 내역</p>
-                    <RecordForm
-                      key={JSON.stringify(rule) + month}
-                      className="mt-3 space-y-3"
-                    >
-                      <Csrf />
-                      <input
-                        type="hidden"
-                        name="intent"
-                        value="confirm-savings"
-                      />
-                      <input type="hidden" name="month" value={month} />
-                      <input
-                        type="hidden"
-                        name="destination_id"
-                        value={rule.destination_id}
-                      />
-                      <input
-                        type="hidden"
-                        name="rule"
-                        value={JSON.stringify(rule)}
-                      />
-                      <div className="grid gap-3 sm:grid-cols-2">
-                        <Field label="실제 납입일">
-                          <Input
-                            type="date"
-                            name="occurred_on"
-                            required
-                            min={ledgerStart}
-                            max={today()}
-                            defaultValue={due && due <= today() ? due : ""}
-                          />
-                        </Field>
-                        <Field label="실제 금액 (원)">
-                          <MoneyInput
-                            name="amount"
-                            required
-                            defaultValue={rule.amount_krw}
-                          />
-                        </Field>
-                      </div>
-                      <Submit>납입 확정</Submit>
-                    </RecordForm>
-                  </div>
-                )}
+                {plan &&
+                  !plan.blocked &&
+                  !transaction &&
+                  confirmId === rule.destination_id && (
+                    <div className="rounded-lg bg-muted/40 p-3">
+                      <p className="text-sm font-medium">실제 출금 내역</p>
+                      <RecordForm
+                        key={JSON.stringify(rule) + month}
+                        className="mt-3 space-y-3"
+                      >
+                        <Csrf />
+                        <input
+                          type="hidden"
+                          name="intent"
+                          value="confirm-savings"
+                        />
+                        <input type="hidden" name="month" value={month} />
+                        <input
+                          type="hidden"
+                          name="destination_id"
+                          value={rule.destination_id}
+                        />
+                        <input
+                          type="hidden"
+                          name="rule"
+                          value={JSON.stringify(rule)}
+                        />
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <Field label="실제 납입일">
+                            <Input
+                              type="date"
+                              name="occurred_on"
+                              required
+                              min={ledgerStart}
+                              max={today()}
+                              defaultValue={due && due <= today() ? due : ""}
+                            />
+                          </Field>
+                          <Field label="실제 금액 (원)">
+                            <MoneyInput
+                              name="amount"
+                              required
+                              defaultValue={rule.amount_krw}
+                            />
+                          </Field>
+                        </div>
+                        <CmaFundingFields
+                          options={Object.fromEntries(
+                            sources
+                              .filter(
+                                (account) =>
+                                  account.account_type === "cma" &&
+                                  account.id !== rule.account_id,
+                              )
+                              .map((account) => [account.id, account.alias]),
+                          )}
+                        />
+                        <Submit>납입 확정</Submit>
+                      </RecordForm>
+                    </div>
+                  )}
               </CardContent>
             </Card>
           );

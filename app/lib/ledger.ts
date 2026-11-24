@@ -24,26 +24,48 @@ export interface Transaction {
   category: string;
   note: string;
   version: number;
+  funding_transfer_id?: string | null;
+}
+
+const savingsGroups: Partial<
+  Record<Account["account_type"], "saving" | "isa" | "pension">
+> = {
+  savings: "saving",
+  housing: "saving",
+  isa: "isa",
+  pension: "pension",
+  irp: "pension",
+};
+
+export function suggestedTransferCategory(
+  source?: Pick<Account, "account_type">,
+  destination?: Pick<Account, "account_type">,
+) {
+  const group = destination && savingsGroups[destination.account_type];
+  if (!group || (source && savingsGroups[source.account_type]))
+    return "general";
+  return group === "saving" ? "saving" : "investment";
+}
+
+export function displayTransferCategory(row: Transaction, accounts: Account[]) {
+  if (row.category !== "saving" && row.category !== "investment")
+    return "general";
+  return suggestedTransferCategory(
+    accounts.find((account) => account.id === row.account_id),
+    accounts.find((account) => account.id === row.destination_id),
+  );
 }
 
 export function contributionGroup(row: Transaction, accounts: Account[]) {
-  const groups: Record<string, "saving" | "isa" | "pension"> = {
-    savings: "saving",
-    housing: "saving",
-    isa: "isa",
-    pension: "pension",
-    irp: "pension",
-  };
-  const source = accounts.find((account) => account.id === row.account_id);
+  if (
+    row.kind !== "transfer" ||
+    displayTransferCategory(row, accounts) === "general"
+  )
+    return;
   const destination = accounts.find(
     (account) => account.id === row.destination_id,
   );
-  return row.kind === "transfer" &&
-    ["saving", "investment"].includes(row.category) &&
-    destination &&
-    !groups[source?.account_type ?? ""]
-    ? groups[destination.account_type]
-    : undefined;
+  return destination && savingsGroups[destination.account_type];
 }
 
 export function ledgerSummary(rows: Transaction[], accounts?: Account[]) {

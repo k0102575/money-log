@@ -34,7 +34,7 @@ export async function loader({ request }: Route.LoaderArgs) {
   const { accounts, rules, plans, rows } = await savingsPageData(
     DB,
     month,
-    true,
+    "link-candidates",
   );
   return { accounts, rules, month, plans, rows };
 }

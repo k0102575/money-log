@@ -39,7 +39,10 @@ export function MoneyInput({ defaultValue, ...props }: Props) {
       defaultValue={
         defaultValue === undefined ? "" : formatAmount(String(defaultValue))
       }
-      onInput={formatInput}
+      onInput={(event) => {
+        formatInput(event);
+        props.onInput?.(event);
+      }}
       onBlur={(event) => {
         formatInput(event);
         props.onBlur?.(event);

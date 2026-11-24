@@ -5,6 +5,7 @@ import { createAccount, snapshot } from "../app/lib/db.server.ts";
 import {
   deleteTransaction,
   saveTransaction,
+  saveTransferThenExpense,
 } from "../app/lib/ledger.server.ts";
 import { ledgerSummary } from "../app/lib/ledger.ts";
 import { makeMarkdown } from "../app/lib/report.ts";
@@ -112,4 +113,106 @@ test("월별 거래는 실제 거래일로 집계하며 이체와 확인 잔액�
   } finally {
     close();
   }
+});
+
+test("이체 후 지출은 한 번만 저장하고 계좌이체와 소비를 따로 집계한다", async (t) => {
+  const { db, sql, close } = testDb();
+  t.after(close);
+  sql.exec(`INSERT INTO accounts(id,alias,institution,account_type,tracking_start_date,created_at,updated_at)
+    VALUES ('cma','CMA','','cma','2026-11-01','',''),('bank','신한','','checking','2026-11-01','','')`);
+  const entry = {
+    request_key: crypto.randomUUID(),
+    occurred_on: "2026-11-03",
+    account_id: "cma",
+    destination_id: "bank",
+    amount: "7,890",
+    category: "멤버십",
+  };
+  await Promise.all([
+    saveTransferThenExpense(db, form(entry)),
+    saveTransferThenExpense(db, form(entry)),
+  ]);
+  await saveTransferThenExpense(
+    db,
+    form({
+      ...entry,
+      request_key: crypto.randomUUID(),
+      amount: "10,000",
+    }),
+  );
+  await assert.rejects(
+    saveTransferThenExpense(
+      db,
+      form({
+        ...entry,
+        request_key: crypto.randomUUID(),
+        destination_id: "missing",
+      }),
+    ),
+  );
+  const { transactions } = await snapshot(db, "2026-11-03", "all");
+  assert.equal(transactions?.length, 4);
+  assert.equal(ledgerSummary(transactions ?? []).expense, 17890n);
+  assert.equal(ledgerSummary(transactions ?? []).transfer, 17890n);
+  assert.ok(
+    transactions
+      ?.filter((row) => row.kind === "expense")
+      .every((row) => row.account_id === "bank" && row.category === "멤버십"),
+  );
+});
+
+test("기존 이체를 연결하면 금액이 중복되지 않고 연결한 두 건을 함께 삭제할 수 있다", async (t) => {
+  const { db, sql, close } = testDb();
+  t.after(close);
+  sql.exec(`
+    INSERT INTO accounts(id,alias,institution,account_type,tracking_start_date,created_at,updated_at)
+    VALUES ('cma','CMA','','cma','2026-11-01','',''),('bank','하나','','checking','2026-11-01','','')
+  `);
+  const input = {
+    occurred_on: "2026-11-03",
+    account_id: "cma",
+    destination_id: "bank",
+    amount: "7890",
+  };
+  const transferId = crypto.randomUUID();
+  const requestKey = crypto.randomUUID();
+  await saveTransaction(
+    db,
+    form({
+      ...input,
+      kind: "transfer",
+      transfer_category: "general",
+      request_key: transferId,
+    }),
+  );
+  await assert.rejects(
+    saveTransferThenExpense(db, form({ ...input, request_key: requestKey })),
+    /같은 날짜/,
+  );
+  await saveTransferThenExpense(
+    db,
+    form({ ...input, request_key: requestKey, funding_choice: transferId }),
+  );
+  const expenseId = `funded-expense:${requestKey}`;
+  const currentRows = () =>
+    sql.prepare("SELECT * FROM ledger_transactions").all();
+  assert.equal(currentRows().length, 2);
+  assert.equal(
+    currentRows().find((row) => row.kind === "expense")?.funding_transfer_id,
+    transferId,
+  );
+  const deletion = {
+    transaction_id: expenseId,
+    version: 1,
+    linked_id: transferId,
+    linked_version: 1,
+    delete_linked: "yes",
+  };
+  await assert.rejects(
+    deleteTransaction(db, form({ ...deletion, linked_version: 2 })),
+    /변경/,
+  );
+  assert.equal(currentRows().length, 2);
+  await deleteTransaction(db, form(deletion));
+  assert.equal(currentRows().length, 0);
 });

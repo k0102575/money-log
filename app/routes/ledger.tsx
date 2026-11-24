@@ -44,12 +44,15 @@ import {
   deleteTransaction,
   ledgerMonth,
   saveTransaction,
+  saveTransferThenExpense,
 } from "~/lib/ledger.server";
 import {
   ledgerKinds,
   ledgerStart,
   ledgerSummary,
   transferCategories,
+  suggestedTransferCategory,
+  displayTransferCategory,
 } from "~/lib/ledger";
 import type { Transaction } from "~/lib/ledger";
 
@@ -63,7 +66,8 @@ export async function loader({ request }: Route.LoaderArgs) {
     month,
     accounts,
     rows,
-    pendingSavings: plans.filter((plan) => !plan.transaction).length,
+    pendingSavings: plans.filter((plan) => !plan.transaction && !plan.blocked)
+      .length,
     requestKey: crypto.randomUUID(),
   };
 }
@@ -81,7 +85,9 @@ export async function action({ request }: Route.ActionArgs) {
       );
     }
     const before = dashboard(await snapshot(DB, today(), "all"));
-    await saveTransaction(DB, form);
+    const isCombined = form.get("kind") === "transfer_then_expense";
+    if (isCombined) await saveTransferThenExpense(DB, form);
+    else await saveTransaction(DB, form);
     const after = dashboard(await snapshot(DB, today(), "all"));
     const previous = new Map([
       ...before.balances.map((row) => [row.id, row.calculated] as const),
@@ -99,7 +105,12 @@ export async function action({ request }: Route.ActionArgs) {
         (row) =>
           `${row.name}: ${format(previous.get(row.id))} → ${format(row.value)}`,
       );
-    return { success: "거래를 저장했습니다. " + changes.join(" · ") };
+    return {
+      success:
+        (isCombined
+          ? "이체와 지출을 저장했습니다. "
+          : "거래를 저장했습니다. ") + changes.join(" · "),
+    };
   } catch (error) {
     return actionFailure(error);
   }
@@ -113,11 +124,47 @@ function TransactionForm({
     preset?: Partial<Transaction>;
   };
 }) {
-  const { accounts, editing, month, requestKey } = data;
+  const { accounts, editing, month, requestKey, rows } = data;
   const values = editing ?? data.preset;
-  const [kind, setKind] = useState<Transaction["kind"]>(
-    values?.kind ?? "expense",
+  const [kind, setKind] = useState<
+    Transaction["kind"] | "transfer_then_expense"
+  >(values?.kind ?? "expense");
+  const combined = kind === "transfer_then_expense";
+  const [date, setDate] = useState(
+    values?.occurred_on ??
+      (today().startsWith(month) ? today() : `${month}-01`),
   );
+  const [source, setSource] = useState(values?.account_id ?? "");
+  const [destination, setDestination] = useState(values?.destination_id ?? "");
+  const [amount, setAmount] = useState(values?.amount_krw ?? 0);
+  const [category, setCategory] = useState(
+    values?.kind === "transfer"
+      ? displayTransferCategory(values as Transaction, accounts)
+      : undefined,
+  );
+  const suggested = suggestedTransferCategory(
+    accounts.find((account) => account.id === source),
+    accounts.find((account) => account.id === destination),
+  );
+  const candidates = combined
+    ? rows.filter(
+        (row) =>
+          row.kind === "transfer" &&
+          row.category === "general" &&
+          row.account_id === source &&
+          row.destination_id === destination &&
+          row.occurred_on === date &&
+          row.amount_krw === amount,
+      )
+    : [];
+  function selectSource(value: string) {
+    setSource(value);
+    setCategory(undefined);
+  }
+  function selectDestination(value: string) {
+    setDestination(value);
+    setCategory(undefined);
+  }
   const options = Object.fromEntries(
     accounts
       .filter(
@@ -146,35 +193,53 @@ function TransactionForm({
             required
             min={ledgerStart}
             max={today()}
-            defaultValue={
-              values?.occurred_on ??
-              (today().startsWith(month) ? today() : `${month}-01`)
-            }
+            value={date}
+            onChange={(event) => setDate(event.target.value)}
           />
         </Field>
         <Field label="거래 유형">
           <Select
             name="kind"
-            options={ledgerKinds}
-            value={kind}
-            onChange={(event) =>
-              setKind(event.target.value as Transaction["kind"])
+            options={
+              editing
+                ? ledgerKinds
+                : { ...ledgerKinds, transfer_then_expense: "이체 후 지출" }
             }
+            value={kind}
+            onChange={(event) => setKind(event.target.value as typeof kind)}
           />
         </Field>
         <Field label={kind === "income" ? "입금 계좌" : "출금 계좌"}>
           <Select
             name="account_id"
             required
-            defaultValue={values?.account_id ?? ""}
+            value={source}
+            onChange={(event) => selectSource(event.target.value)}
             options={{ "": "계좌 선택", ...options }}
           />
         </Field>
-        <Field label="금액 (원)">
+        {combined && (
+          <Field
+            label="지출 계좌"
+            hint="출금 계좌에서 이 계좌로 이체한 뒤 지출한 것으로 기록합니다."
+          >
+            <Select
+              name="destination_id"
+              required
+              value={destination}
+              onChange={(event) => selectDestination(event.target.value)}
+              options={{ "": "계좌 선택", ...options }}
+            />
+          </Field>
+        )}
+        <Field label={combined ? "지출액 (원)" : "금액 (원)"}>
           <MoneyInput
             name="amount"
             required
             defaultValue={values?.amount_krw}
+            onInput={(event) =>
+              setAmount(Number(event.currentTarget.value.replaceAll(",", "")))
+            }
           />
         </Field>
         {kind === "transfer" ? (
@@ -183,16 +248,27 @@ function TransactionForm({
               <Select
                 name="destination_id"
                 required
-                defaultValue={values?.destination_id ?? ""}
+                value={destination}
+                onChange={(event) => selectDestination(event.target.value)}
                 options={{ "": "계좌 선택", ...options }}
               />
             </Field>
             <Field label="이체 목적">
               <Select
                 name="transfer_category"
-                options={transferCategories}
-                defaultValue={
-                  values?.kind === "transfer" ? values.category : "general"
+                options={
+                  suggested === "general"
+                    ? { general: transferCategories.general }
+                    : {
+                        general: transferCategories.general,
+                        [suggested]: transferCategories[suggested],
+                      }
+                }
+                value={category ?? suggested}
+                onChange={(event) =>
+                  setCategory(
+                    event.target.value as keyof typeof transferCategories,
+                  )
                 }
               />
             </Field>
@@ -204,6 +280,31 @@ function TransactionForm({
               maxLength={40}
               placeholder="예: 급여, 식비, 온누리 충전"
               defaultValue={values?.kind !== "transfer" ? values?.category : ""}
+            />
+          </Field>
+        )}
+        {candidates.length > 0 && (
+          <Field
+            label="같은 이체가 있어요"
+            hint="이미 입력한 이체를 골라 연결하거나 실제로 별도 이체했다면 새 이체를 선택하세요."
+          >
+            <Select
+              key={candidates.map((row) => row.id).join(",")}
+              name="funding_choice"
+              required
+              options={{
+                "": "기존 이체 또는 새 이체를 선택하세요",
+                ...Object.fromEntries(
+                  candidates
+                    .filter((row) => !row.linked_id && !row.funding_transfer_id)
+                    .map((row) => [
+                      row.id,
+                      `${row.occurred_on} · ${won(row.amount_krw)}${row.note ? " · " + row.note : ""}`,
+                    ]),
+                ),
+                new: "별도로 보낸 새 이체 기록",
+              }}
+              defaultValue=""
             />
           </Field>
         )}
@@ -532,10 +633,19 @@ export default function Ledger() {
               {names.get(row.account_id)}
               {row.destination_id && ` → ${names.get(row.destination_id)}`}
               {row.category &&
-                ` · ${row.kind === "transfer" ? transferCategories[row.category as keyof typeof transferCategories] : row.category}`}
+                ` · ${row.kind === "transfer" ? transferCategories[displayTransferCategory(row, accounts)] : row.category}`}
             </p>
             {row.note && <p className="break-words text-sm">{row.note}</p>}
-            <div className="mt-2 flex gap-2">
+            {row.linked_id && row.linked_date && (
+              <Link
+                className="mt-2 block text-sm text-primary underline"
+                to={`/ledger?month=${row.linked_date.slice(0, 7)}&edit=${encodeURIComponent(row.linked_id)}#transaction-form`}
+              >
+                연결된 {row.linked_kind === "expense" ? "지출" : "이체"} ·{" "}
+                {row.linked_date} · {won(row.linked_amount)}
+              </Link>
+            )}
+            <div className="mt-2 flex flex-wrap gap-2">
               <Button variant="outline" className="min-h-10" asChild>
                 <Link
                   to={`/ledger?month=${month}&edit=${row.id}#transaction-form`}
@@ -546,8 +656,17 @@ export default function Ledger() {
               <Form
                 method="post"
                 onSubmit={(event) => {
-                  if (!window.confirm("이 거래를 삭제할까요?"))
-                    event.preventDefault();
+                  const submitter = (event.nativeEvent as SubmitEvent)
+                    .submitter;
+                  const both =
+                    submitter instanceof HTMLButtonElement &&
+                    submitter.name === "delete_linked";
+                  const message = both
+                    ? "이 거래와 연결된 거래를 모두 삭제할까요?"
+                    : row.linked_id
+                      ? "이 거래만 삭제할까요? 연결된 거래는 가계부에 남습니다."
+                      : "이 거래를 삭제할까요?";
+                  if (!window.confirm(message)) event.preventDefault();
                 }}
               >
                 <Csrf />
@@ -555,9 +674,33 @@ export default function Ledger() {
                 <input type="hidden" name="month" value={month} />
                 <input type="hidden" name="transaction_id" value={row.id} />
                 <input type="hidden" name="version" value={row.version} />
+                {row.linked_id && (
+                  <>
+                    <input
+                      type="hidden"
+                      name="linked_id"
+                      value={row.linked_id}
+                    />
+                    <input
+                      type="hidden"
+                      name="linked_version"
+                      value={row.linked_version ?? ""}
+                    />
+                  </>
+                )}
                 <Submit className="min-h-10" variant="ghost">
-                  삭제
+                  {row.linked_id ? "이 거래만 삭제" : "삭제"}
                 </Submit>
+                {row.linked_id && (
+                  <Submit
+                    name="delete_linked"
+                    value="yes"
+                    className="min-h-10"
+                    variant="ghost"
+                  >
+                    연결 거래도 삭제
+                  </Submit>
+                )}
               </Form>
             </div>
           </div>
