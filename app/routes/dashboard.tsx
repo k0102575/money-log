@@ -36,8 +36,11 @@ export async function loader({ request }: Route.LoaderArgs) {
       asOf,
     ),
     DB.prepare("SELECT * FROM recurring_savings ORDER BY effective_month DESC"),
+    DB.prepare("SELECT updated_at FROM last_data_update WHERE id = 1"),
   ]);
   const rules = result[3].results as unknown as SavingsRule[];
+  const lastUpdate = result[4].results[0] as
+    { updated_at: string | null } | undefined;
   const data = {
     accounts: result[0].results as unknown as Account[],
     observations: result[1].results as unknown as Observation[],
@@ -64,6 +67,7 @@ export async function loader({ request }: Route.LoaderArgs) {
   return {
     ...summary,
     asOf,
+    lastUpdatedAt: lastUpdate?.updated_at ?? null,
     pending: plans
       .filter((plan) => !plan.transaction)
       .map(({ rule, due, month }) => ({
@@ -86,6 +90,12 @@ const fundSeries = [
   { key: "isa", label: "ISA", color: "bg-sky-500" },
   { key: "pension", label: "연금저축·IRP", color: "bg-indigo-400" },
 ] as const;
+
+const updateTimeFormat = new Intl.DateTimeFormat("ko-KR", {
+  dateStyle: "long",
+  timeStyle: "short",
+  timeZone: "Asia/Seoul",
+});
 
 export default function Dashboard() {
   const data = useLoaderData<typeof loader>();
@@ -144,7 +154,21 @@ export default function Dashboard() {
     <main className="page space-y-6">
       <PageHeader
         title="나의 자산 흐름"
-        description={`${data.asOf} · 직접 기록한 내 돈의 현황`}
+        description={
+          <>
+            <span>{data.asOf} · 직접 기록한 내 돈의 현황</span>
+            <span className="mt-1 block">
+              마지막 데이터 업데이트 ·{" "}
+              {data.lastUpdatedAt ? (
+                <time dateTime={data.lastUpdatedAt}>
+                  {updateTimeFormat.format(new Date(data.lastUpdatedAt))}
+                </time>
+              ) : (
+                "아직 저장 기록이 없어요"
+              )}
+            </span>
+          </>
+        }
         actions={
           <>
             <AccountSettings />

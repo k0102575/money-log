@@ -1,6 +1,6 @@
 import { DatabaseSync } from "node:sqlite";
 import { readFileSync } from "node:fs";
-export function testDb() {
+export function testDb(seedLegacyData?: (sql: DatabaseSync) => void) {
   const sql = new DatabaseSync(":memory:");
   sql.exec(
     readFileSync(
@@ -23,6 +23,13 @@ export function testDb() {
   sql.exec(
     readFileSync(
       new URL("../migrations/0004_recurring_savings.sql", import.meta.url),
+      "utf8",
+    ),
+  );
+  seedLegacyData?.(sql);
+  sql.exec(
+    readFileSync(
+      new URL("../migrations/0005_last_data_update.sql", import.meta.url),
       "utf8",
     ),
   );
